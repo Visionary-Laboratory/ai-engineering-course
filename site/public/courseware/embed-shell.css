@@ -1,0 +1,34 @@
+html.ai-engineering-embedded {
+  scroll-behavior: auto;
+  scroll-padding-top: 20px;
+}
+
+html.ai-engineering-embedded .skip-link,
+html.ai-engineering-embedded .site-header,
+html.ai-engineering-embedded .app-shell > .sidebar,
+html.ai-engineering-embedded .site-body > .breadcrumb {
+  display: none !important;
+}
+
+html.ai-engineering-embedded .app-shell {
+  display: block;
+  min-height: 0;
+  padding-top: 0;
+}
+
+html.ai-engineering-embedded .site-body {
+  width: 100%;
+  min-width: 0;
+  margin-left: 0;
+}
+
+html.ai-engineering-embedded .intro-reading-layout {
+  display: block !important;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+}
+
+html.ai-engineering-embedded .page-toc {
+  display: none !important;
+}

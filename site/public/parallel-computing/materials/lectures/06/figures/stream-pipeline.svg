@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="400" viewBox="0 0 1440 400" role="img" aria-labelledby="title desc">
+<title id="title">一条队列与三条队列处理相同三段数据</title><desc id="desc">上方一条stream顺序完成全部上传、计算、下载；下方三条stream分别处理A、B、C，可在计算A时上传B和C、计算B时下载A。所有复制互不重叠，图为可能安排而非实测时间线。</desc>
+<rect width="1440" height="400" rx="8" fill="#ffffff"/>
+<g font-family="Arial,Microsoft YaHei,sans-serif" fill="#20372f">
+<text x="25" y="32" font-size="25" font-weight="700">相同三段数据：A、B、C</text>
+<text x="725" y="32" font-size="23" font-weight="400">蓝：上传　绿：计算　橙：下载</text>
+<text x="25" y="96" font-size="25" font-weight="700">1条 stream</text>
+<rect x="220" y="66" width="88" height="44" rx="5" fill="#e7f1f8" stroke="#246b96"/>
+<text x="264.0" y="95" text-anchor="middle" font-size="22">上传A</text>
+<rect x="314" y="66" width="88" height="44" rx="5" fill="#e7f1f8" stroke="#246b96"/>
+<text x="358.0" y="95" text-anchor="middle" font-size="22">上传B</text>
+<rect x="408" y="66" width="88" height="44" rx="5" fill="#e7f1f8" stroke="#246b96"/>
+<text x="452.0" y="95" text-anchor="middle" font-size="22">上传C</text>
+<rect x="502" y="66" width="182" height="44" rx="5" fill="#e4f2eb" stroke="#176b52"/>
+<text x="593.0" y="95" text-anchor="middle" font-size="22">计算A</text>
+<rect x="690" y="66" width="182" height="44" rx="5" fill="#e4f2eb" stroke="#176b52"/>
+<text x="781.0" y="95" text-anchor="middle" font-size="22">计算B</text>
+<rect x="878" y="66" width="182" height="44" rx="5" fill="#e4f2eb" stroke="#176b52"/>
+<text x="969.0" y="95" text-anchor="middle" font-size="22">计算C</text>
+<rect x="1066" y="66" width="88" height="44" rx="5" fill="#fff1ce" stroke="#936015"/>
+<text x="1110.0" y="95" text-anchor="middle" font-size="22">下载A</text>
+<rect x="1160" y="66" width="88" height="44" rx="5" fill="#fff1ce" stroke="#936015"/>
+<text x="1204.0" y="95" text-anchor="middle" font-size="22">下载B</text>
+<rect x="1254" y="66" width="88" height="44" rx="5" fill="#fff1ce" stroke="#936015"/>
+<text x="1298.0" y="95" text-anchor="middle" font-size="22">下载C</text>
+<path d="M25 140H1395" stroke="#cadbd0"/>
+<text x="25" y="187" font-size="25" font-weight="700">3条 stream</text>
+<text x="42" y="210" font-size="21" font-weight="400">队列0 · 段A</text>
+<rect x="220" y="159" width="88" height="44" rx="5" fill="#e7f1f8" stroke="#246b96"/>
+<text x="264.0" y="188" text-anchor="middle" font-size="22">上传A</text>
+<rect x="314" y="159" width="182" height="44" rx="5" fill="#e4f2eb" stroke="#176b52"/>
+<text x="405.0" y="188" text-anchor="middle" font-size="22">计算A</text>
+<rect x="502" y="159" width="88" height="44" rx="5" fill="#fff1ce" stroke="#936015"/>
+<text x="546.0" y="188" text-anchor="middle" font-size="22">下载A</text>
+<text x="42" y="273" font-size="21" font-weight="400">队列1 · 段B</text>
+<rect x="314" y="222" width="88" height="44" rx="5" fill="#e7f1f8" stroke="#246b96"/>
+<text x="358.0" y="251" text-anchor="middle" font-size="22">上传B</text>
+<rect x="502" y="222" width="182" height="44" rx="5" fill="#e4f2eb" stroke="#176b52"/>
+<text x="593.0" y="251" text-anchor="middle" font-size="22">计算B</text>
+<rect x="690" y="222" width="88" height="44" rx="5" fill="#fff1ce" stroke="#936015"/>
+<text x="734.0" y="251" text-anchor="middle" font-size="22">下载B</text>
+<text x="42" y="336" font-size="21" font-weight="400">队列2 · 段C</text>
+<rect x="408" y="285" width="88" height="44" rx="5" fill="#e7f1f8" stroke="#246b96"/>
+<text x="452.0" y="314" text-anchor="middle" font-size="22">上传C</text>
+<rect x="690" y="285" width="182" height="44" rx="5" fill="#e4f2eb" stroke="#176b52"/>
+<text x="781.0" y="314" text-anchor="middle" font-size="22">计算C</text>
+<rect x="878" y="285" width="88" height="44" rx="5" fill="#fff1ce" stroke="#936015"/>
+<text x="922.0" y="314" text-anchor="middle" font-size="22">下载C</text>
+<path d="M220 352H1348l-12 -6m12 6l-12 6" fill="none" stroke="#6c8175" stroke-width="2"/>
+<text x="220" y="388" font-size="23" font-weight="400">时间 →　计算可以与另一段的传输重叠；块宽仅作示意，不是实测耗时。</text>
+</g></svg>

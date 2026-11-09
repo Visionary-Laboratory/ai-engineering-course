@@ -1,0 +1,45 @@
+html.ai-engineering-embedded .course-app {
+  min-height: 0 !important;
+  padding-top: 0 !important;
+}
+
+html.ai-engineering-embedded .site-header,
+html.ai-engineering-embedded .course-app > div[data-slot='sidebar'],
+html.ai-engineering-embedded .breadcrumb,
+html.ai-engineering-embedded .skip-link {
+  display: none !important;
+}
+
+html.ai-engineering-embedded .site-body {
+  width: 100%;
+  min-width: 0;
+}
+
+html.ai-engineering-embedded-compact .lecture-reading-layout {
+  display: block !important;
+}
+
+html.ai-engineering-embedded-compact .lecture-toc {
+  display: none !important;
+}
+
+html.ai-engineering-embedded-compact .lecture-workspace {
+  max-width: none;
+  padding: 20px 20px 0;
+}
+
+html.ai-engineering-embedded-compact .lecture-toolbar,
+html.ai-engineering-embedded-compact .lecture-tools {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+html.ai-engineering-embedded-compact .lecture-tools {
+  justify-content: flex-start;
+}
+
+@media (max-width: 767px) {
+  html.ai-engineering-embedded-compact .lecture-workspace {
+    padding: 20px 20px 0;
+  }
+}
