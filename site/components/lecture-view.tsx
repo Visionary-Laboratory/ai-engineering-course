@@ -500,7 +500,7 @@ export function LectureView({
             ))}
             <nav className="lecture-pagination" aria-label="前后讲导航">
               {previous ? (
-                <a href={courseUrl(`/lectures/${previous.slug}`)}>
+                <a href={courseUrl(`/model-foundations/lectures/${previous.slug}`)}>
                   <span>
                     <ArrowLeft size={15} />
                     上一讲
@@ -517,7 +517,7 @@ export function LectureView({
                 </a>
               )}
               {next && (
-                <a href={courseUrl(`/lectures/${next.slug}`)}>
+                <a href={courseUrl(`/model-foundations/lectures/${next.slug}`)}>
                   <span>
                     下一讲
                     <ArrowRight size={15} />
@@ -671,7 +671,7 @@ export function LectureView({
               {next ? (
                 <a
                   className="button primary"
-                  href={courseUrl(`/lectures/${next.slug}?mode=slides`)}
+                  href={courseUrl(`/model-foundations/lectures/${next.slug}?mode=slides`)}
                 >
                   进入第 {next.number} 讲<ArrowRight size={16} />
                 </a>

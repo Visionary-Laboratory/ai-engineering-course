@@ -1,0 +1,29 @@
+{
+  "lectures": [
+    {
+      "number": 1,
+      "slug": "01-introduction",
+      "title": "并行基础与性能模型",
+      "slides": 75
+    },
+    {
+      "number": 2,
+      "slug": "02-execution-models",
+      "title": "并行硬件与执行模型",
+      "slides": 71
+    },
+    {
+      "number": 3,
+      "slug": "05-cuda-introduction",
+      "title": "CUDA编程入门（上）",
+      "slides": 55
+    },
+    {
+      "number": 4,
+      "slug": "06-memory-hierarchy",
+      "title": "CUDA编程入门（下）",
+      "slides": 79
+    }
+  ],
+  "glossaryTerms": 59
+}

@@ -114,7 +114,7 @@ export function GenerativeLectureView({ lesson }: { lesson: Lesson }) {
         <iframe
           className="parallel-lecture-frame"
           ref={frameRef}
-          src={courseUrl('/courseware/generative-models.html?embedded=1')}
+          src={courseUrl('/model-foundations/courseware/generative-models.html?embedded=1')}
           title={`第 ${lesson.number} 讲 · ${lesson.title}`}
           onLoad={onLoad}
           style={{ height }}

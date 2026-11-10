@@ -2,7 +2,9 @@
 
 课程网站，沿用《并行计算与算子编程》的绿色侧栏、连续阅读与翻页演示方式。支持本地预览与公开访问。
 
-当前课程包含「模型原理」六讲及「并行计算」七讲。并行计算分为「01 理解并行计算」（第 01–04 讲）和「02 走进 CUDA 编程」（第 05–07 讲），均在 AI 工程学课程内阅读。左右目录共用小节标题和罗马数字编号，下级内容可点击直达。
+当前课程包含「模型原理」六讲及「并行计算」四讲。并行计算分为「01 理解并行计算」（并行基础与性能模型、并行硬件与执行模型）和「02 走进 CUDA 编程」（CUDA编程入门（上）、CUDA编程入门（下）），均在 AI 工程学课程内阅读。左右目录共用小节标题和罗马数字编号，下级内容可点击直达。
+
+模型六讲页面集中在 `/model-foundations/lectures/`，对应正文和资源分别集中在 `content/model-foundations/` 与 `public/model-foundations/`。
 
 ## GitHub Pages
 
@@ -11,9 +13,9 @@ pnpm install --frozen-lockfile
 pnpm build:pages
 ```
 
-将 `dist/client/` 的内容同步到仓库根目录即可通过 GitHub Pages 发布。该命令静态生成首页和 13 讲页面，处理 `/ai-engineering-course/` 子路径，并保留生成模型与并行计算的嵌入内容。普通本地预览仍使用 `pnpm dev` 和根路径。
+运行 `node scripts/publish-local.mjs` 将构建产物同步到仓库根目录，再通过 GitHub Pages 发布。该命令静态生成首页、模型原理目录和 10 讲页面，处理 `/ai-engineering-course/` 子路径，并保留生成模型与并行计算的嵌入内容。普通本地预览仍使用 `pnpm dev` 和根路径。
 
-`public/materials/*/*.webp` 是本地原课件截图归档，不纳入源码提交和发布产物；教学图解、照片、动态素材与嵌入课件均保留。`scripts/check-content.mjs` 的完整来源截图核验需要本地归档。
+`public/model-foundations/materials/*/*.webp` 是本地原课件截图归档，不纳入源码提交和发布产物；教学图解、照片、动态素材与嵌入课件均保留。`scripts/check-content.mjs` 的完整来源截图核验需要本地归档；归档另存时，可设置 `COURSE_SOURCE_ARCHIVE=/绝对路径/materials`。
 
 ## 预览
 
@@ -35,9 +37,9 @@ pnpm build:pages
 
 合计 739 页、38 个原隐藏页、120 个连续段落（含目录与过渡），保留 25 份独立教学动态素材（GIF 与 MP4）。内容来源为按编号排列的五个原始 PPTX。原 PPT 已由老师单独发给学生，本交接包不重复附带；如需重新提取素材，请将其放入上一层 `PPT材料` 目录。
 
-`content/*.json` 包含每页原文、原始页码、隐藏标记、引用、动态素材、中文讲解，以及新图解的标题与图片来源。`public/materials/` 保存原页的 1920 像素图、缩略图和动态素材，仅作为离线来源存档，不在网站中展示。PPT 原文件没有修改。
+`content/model-foundations/*.json` 包含每页原文、原始页码、隐藏标记、引用、动态素材、中文讲解，以及新图解的标题与图片来源。`public/model-foundations/materials/` 保存原页的 1920 像素图、缩略图和动态素材，仅作为离线来源存档，不在网站中展示。PPT 原文件没有修改。
 
-主要教学图解为 739 份透明背景 SVG，按原页映射，以 131 类图解呈现模型结构、矩阵运算、计算关系与训练流程。连续推导使用分步高亮或分阶段内容；教学算例注明了示意数据或原课件参数。67 个原始图片元素用于照片、图像样本、模型输出和实验结果；多图片结果保留原来的相对排列，部分图片仅裁取内容区域。没有重新生成实验结果或测量数据。完整对应记录在 `public/diagrams/manifest.json`。网页仅显示教学内容，不显示来源对照、原文、引用入口或原页码；图解标题、说明和分步导航是原生网页组件，SVG 内仅包含图形。
+主要教学图解为 739 份透明背景 SVG，按原页映射，以 135 类图解呈现模型结构、矩阵运算、计算关系与训练流程。连续推导使用分步高亮或分阶段内容；教学算例注明了示意数据或原课件参数。67 个原始图片元素用于照片、图像样本、模型输出和实验结果；多图片结果保留原来的相对排列，部分图片仅裁取内容区域。没有重新生成实验结果或测量数据。完整对应记录在 `public/model-foundations/diagrams/manifest.json`。网页仅显示教学内容，不显示来源对照、原文、引用入口或原页码；图解标题、说明和分步导航是原生网页组件，SVG 内仅包含图形。
 
 源文件中的独立 GIF / MP4 仍可由“观看动态演示”打开；PPT 原生对象动画不作为动画播放。视频没有额外制作字幕。
 
@@ -58,7 +60,7 @@ pnpm build:pages
 - `npm test`：验证五讲、739 页、原图与媒体、图解映射和素材来源，并检查正文公式；段落页码不得有缺口或重叠。
 - `npm run build`：生产编译。
 
-修改课程简介：`lib/course.ts`。修改知识点讲解与范围：`content/*.json`。展示逻辑：`components/lecture-view.tsx`。交互示例：`components/learning-labs.tsx`。主题：`app/globals.css`。
+修改课程简介：`lib/course.ts`。修改知识点讲解与范围：`content/model-foundations/*.json`。展示逻辑：`components/lecture-view.tsx`。交互示例：`components/learning-labs.tsx`。主题：`app/globals.css`。
 
 图解定义在 `scripts/diagrams/`，由 `npm run diagrams` 生成。生成脚本读取课程目录 `.course-build/redraw/elements.json` 和 `original-elements/` 缓存，仅把实际使用的图片复制到网站。需要重新提取时，在课程根目录用含 lxml 的 Python 运行 `.course-build/redraw/extract-elements.py`，再生成图解。
 

@@ -37,5 +37,5 @@ export type LectureContent = {
   chapters: { start: number; title: string }[];
 };
 export function slideImage(lesson: number, page: number) {
-  return courseUrl(`/diagrams/${lesson}/${page}.svg`);
+  return courseUrl(`/model-foundations/diagrams/${lesson}/${page}.svg`);
 }

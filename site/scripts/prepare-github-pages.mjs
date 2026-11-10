@@ -21,12 +21,19 @@ if (existsSync(prefixedAssets)) {
 }
 
 let updated = 0;
-const lectures = join(root, 'lectures');
-for (const entry of readdirSync(lectures, { withFileTypes: true })) {
-  if (!entry.isFile() || !entry.name.endsWith('.html')) continue;
-  const directory = join(lectures, entry.name.slice(0, -5));
-  mkdirSync(directory, { recursive: true });
-  renameSync(join(lectures, entry.name), join(directory, 'index.html'));
+for (const route of ['lectures', 'model-foundations/lectures']) {
+  const lectures = join(root, route);
+  for (const entry of readdirSync(lectures, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.html')) continue;
+    const directory = join(lectures, entry.name.slice(0, -5));
+    mkdirSync(directory, { recursive: true });
+    renameSync(join(lectures, entry.name), join(directory, 'index.html'));
+  }
+}
+const modelOverview = join(root, 'model-foundations.html');
+if (existsSync(modelOverview)) {
+  mkdirSync(join(root, 'model-foundations'), { recursive: true });
+  renameSync(modelOverview, join(root, 'model-foundations', 'index.html'));
 }
 
 function prepare(directory) {

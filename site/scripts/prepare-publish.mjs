@@ -1,7 +1,7 @@
 // Full-slide exports are a local source archive; only teaching media is served.
 import fs from 'node:fs/promises';
 import path from 'node:path';
-const root=path.resolve(import.meta.dirname,'../dist/client/materials');
+const root=path.resolve(import.meta.dirname,'../dist/client/model-foundations/materials');
 let count=0;
 for(const entry of await fs.readdir(root,{withFileTypes:true})){
  if(!entry.isDirectory()||!/^\d+$/.test(entry.name))continue;

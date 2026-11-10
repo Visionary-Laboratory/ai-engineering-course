@@ -7,9 +7,13 @@
 ## 课程内容
 
 - **模型原理**：人工神经网络基础、CNN 与图像识别、RNN 与 LSTM、Transformer 模型、自监督学习、生成模型。
-- **并行计算**：01 理解并行计算（并行基础与性能模型、并行硬件与执行模型、并行程序设计思想、缓存一致性与同步实现）；02 走进 CUDA 编程（CUDA 编程入门、CUDA 内存层次、CUDA 基础算子模式）。
+- **并行计算**：01 理解并行计算（并行基础与性能模型、并行硬件与执行模型）；02 走进 CUDA 编程（CUDA编程入门（上）、CUDA编程入门（下））。
 
-共 13 讲。模型原理和并行计算共用 AI 工程学课程框架；章节使用 `01`、`02` 编号，小节使用罗马数字。生成模型包含 Part I 与 Part II，提供 43 个阅读主题和 114 个演示步骤。
+共 10 讲。模型原理和并行计算共用 AI 工程学课程框架；章节使用 `01`、`02` 编号，小节使用罗马数字。生成模型包含 Part I 与 Part II，提供 43 个阅读主题和 114 个演示步骤。
+
+模型原理的页面、图解、媒体和原版课件统一位于 `model-foundations/`，六讲入口为 `model-foundations/lectures/`。并行计算的四讲内容与资源位于 `parallel-computing/`，在主课程内通过 `lectures/parallel-*` 阅读。
+
+源码中的模型正文位于 `site/content/model-foundations/`，资源位于 `site/public/model-foundations/`；并行计算资源位于 `site/public/parallel-computing/`。
 
 ## 源码与本地开发
 
@@ -31,9 +35,9 @@ pnpm dev
 cd site
 pnpm build:pages
 cd ..
-rsync -a --exclude=.vite --exclude=.assetsignore --exclude=_headers site/dist/client/ ./
+node site/scripts/publish-local.mjs
 ```
 
 确认页面后提交源码与静态产物，推送至 `main`。GitHub Pages 沿用 `main` 分支根目录发布，网址保持不变。静态产物包含 `.nojekyll`，无需服务器或数据库。
 
-源码保留教学素材；本地缓存、依赖目录和原页截图归档不上传。原版课件生成脚本和 PDF 仍保留在仓库中，历史维护说明见 [LEGACY_MAINTENANCE.md](LEGACY_MAINTENANCE.md)。
+源码保留教学素材；本地缓存、依赖目录和原页截图归档不上传。原版课件生成脚本和 PDF 仍保留在仓库中，历史维护说明见 [LEGACY_MAINTENANCE.md](model-foundations/LEGACY_MAINTENANCE.md)。

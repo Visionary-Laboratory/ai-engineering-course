@@ -1,6 +1,7 @@
 import { ArrowRight, BookOpen, Cpu, MonitorPlay } from 'lucide-react';
 import { CourseShell } from '@/components/course-shell';
-import { lessons, parallelCourse } from '@/lib/course';
+import { ModelCourseOutline } from '@/components/model-course-outline';
+import { parallelCourse } from '@/lib/course';
 import { courseUrl } from '@/lib/course-url';
 export default function Home() {
   return (
@@ -22,7 +23,9 @@ export default function Home() {
             <div className="intro-actions">
               <a
                 className="button primary"
-                href={courseUrl('/lectures/01-neural-networks')}
+                href={courseUrl(
+                  '/model-foundations/lectures/01-neural-networks',
+                )}
               >
                 <BookOpen size={17} />
                 阅读第一讲
@@ -30,7 +33,9 @@ export default function Home() {
               </a>
               <a
                 className="button secondary"
-                href={courseUrl('/lectures/01-neural-networks?mode=slides')}
+                href={courseUrl(
+                  '/model-foundations/lectures/01-neural-networks?mode=slides',
+                )}
               >
                 <MonitorPlay size={18} />
                 开始授课
@@ -57,38 +62,16 @@ export default function Home() {
               <h2>模型原理</h2>
               <span>MODEL FOUNDATIONS</span>
             </div>
-            <div className="lecture-list">
-              {lessons.map((l) => (
-                <article key={l.slug}>
-                  <span className="lecture-list-number">0{l.number}</span>
-                  <div>
-                    <a href={courseUrl(`/lectures/${l.slug}`)}>
-                      <h3>
-                        {l.title}
-                        <ArrowRight size={18} />
-                      </h3>
-                    </a>
-                    <p className="lecture-english">{l.english}</p>
-                    <p>{l.summary}</p>
-                    <div className="lecture-topics">
-                      {l.topics.map((t) => (
-                        <span key={t}>{t}</span>
-                      ))}
-                    </div>
-                    <div className="lecture-list-actions">
-                      <a href={courseUrl(`/lectures/${l.slug}`)}>
-                        <BookOpen size={15} />
-                        阅读
-                      </a>
-                      <a href={courseUrl(`/lectures/${l.slug}?mode=slides`)}>
-                        <MonitorPlay size={15} />
-                        演示
-                      </a>
-                      <span>{l.topics.length} 个主题</span>
-                    </div>
-                  </div>
-                </article>
-              ))}
+            <ModelCourseOutline />
+            <div className="parallel-course-action">
+              <a
+                className="button secondary"
+                href={courseUrl('/model-foundations/')}
+              >
+                <BookOpen size={17} />
+                进入模型原理
+                <ArrowRight size={16} />
+              </a>
             </div>
           </section>
           <section className="course-section" id="parallel-computing">

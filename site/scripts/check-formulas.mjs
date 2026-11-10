@@ -7,7 +7,7 @@ import Markdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
-const dir = path.resolve(import.meta.dirname, '../content');
+const dir = path.resolve(import.meta.dirname, '../content/model-foundations');
 let count = 0;
 for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.json'))) {
   const { topics } = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));

@@ -10,12 +10,12 @@ const elements = JSON.parse(
     'utf8',
   ),
 );
-const files = (await fs.readdir(path.join(root, 'content')))
+const files = (await fs.readdir(path.join(root, 'content/model-foundations')))
   .filter((f) => f.endsWith('.json'))
   .sort();
 const slides = await Promise.all(
   files.map(async (f) =>
-    JSON.parse(await fs.readFile(path.join(root, 'content', f), 'utf8')),
+    JSON.parse(await fs.readFile(path.join(root, 'content/model-foundations', f), 'utf8')),
   ),
 );
 const overrides = {
@@ -134,7 +134,7 @@ async function asset([n, p, index = 0, crop]) {
       '../.course-build/redraw/original-elements',
       meta.url.split('/elements/')[1],
     );
-    const target = path.join(root, 'public', meta.url);
+    const target = path.join(root, 'public/model-foundations', meta.url);
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.copyFile(source, target);
     const data = await fs.readFile(source);
@@ -144,6 +144,7 @@ async function asset([n, p, index = 0, crop]) {
   }
   return {
     ...meta,
+    url: `/model-foundations${meta.url}`,
     data: cache.get(meta.url),
     crop,
     sourcePage: p,
@@ -154,7 +155,7 @@ let count = 0;
 const seen = new Set(),
   manifest = [];
 for (const r of recipes) {
-  await fs.mkdir(path.join(root, 'public/diagrams', String(r.lesson)), {
+  await fs.mkdir(path.join(root, 'public/model-foundations/diagrams', String(r.lesson)), {
     recursive: true,
   });
   for (let page = r.start; page <= r.end; page++) {
@@ -183,7 +184,7 @@ for (const r of recipes) {
         .slice(0, 3)
         .map((_, i) => [5, page, i]);
     d.assets = (await Promise.all((sources ?? []).map(asset))).filter(Boolean);
-    const url = `/diagrams/${key}.svg`;
+    const url = `/model-foundations/diagrams/${key}.svg`;
     await fs.writeFile(path.join(root, 'public', url), renderFigure(d));
     const info = {
       page,
@@ -209,12 +210,12 @@ for (let i = 0; i < slides.length; i++) {
   for (const s of slides[i].slides)
     assert(seen.has(`${i + 1}/${s.page}`), `Unmapped page ${i + 1}/${s.page}`);
   await fs.writeFile(
-    path.join(root, 'content', files[i]),
+    path.join(root, 'content/model-foundations', files[i]),
     JSON.stringify(slides[i], null, 2) + '\n',
   );
 }
 await fs.writeFile(
-  path.join(root, 'public/diagrams/manifest.json'),
+  path.join(root, 'public/model-foundations/diagrams/manifest.json'),
   JSON.stringify(manifest, null, 2) + '\n',
 );
 console.log(

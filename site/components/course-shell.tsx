@@ -22,7 +22,15 @@ function Nav({ active }: { active?: string }) {
   return (
     <Sidebar className="course-sidebar">
       <div className="sidebar-heading">
-        课程讲义 <span>13 讲</span>
+        课程讲义{' '}
+        <span>
+          {lessons.length +
+            parallelCourse.parts.reduce(
+              (count, part) => count + part.lectures.length,
+              0,
+            )}{' '}
+          讲
+        </span>
       </div>
       <SidebarContent className="course-nav">
         <a
@@ -59,7 +67,7 @@ function Nav({ active }: { active?: string }) {
                     <a
                       className="nav-topic-link"
                       href={courseUrl(
-                        `/lectures/${lesson.slug}#${lesson.topicAnchors[topicIndex]}`,
+                        `/model-foundations/lectures/${lesson.slug}#${lesson.topicAnchors[topicIndex]}`,
                       )}
                       key={topic}
                       onClick={() => setOpenMobile(false)}
@@ -164,7 +172,9 @@ export function CourseShell({
           <a href={courseUrl('/')} className={!active ? 'current' : ''}>
             课程概览
           </a>
-          <a href={courseUrl('/lectures/01-neural-networks')}>课程讲义</a>
+          <a href={courseUrl('/model-foundations/lectures/01-neural-networks')}>
+            课程讲义
+          </a>
           <span className="institution">
             <GraduationCap size={17} />
             上海创智学院

@@ -111,6 +111,44 @@ renderers.roadmap = (d) => {
   });
   return out + txt(480, 414, "以数据定义任务　·　用模型组织计算　·　通过评价验证方法", 18, C.muted);
 };
+renderers.closing = () =>
+  txt(480, 215, 'Thanks', 56, C.green, 'middle', 999, 600) +
+  txt(480, 300, 'Welcome to join VisionXLab', 29, C.ink) +
+  txt(480, 356, 'yangxue.site', 25, C.muted);
+renderers['turing-dialogue'] = (d) => {
+  const llm = d.variant === 'llm';
+  let s = txt(480, 122, '反复询问：你会下国际象棋吗？', 23, C.ink);
+  const answers = llm
+    ? [
+        ['第一次回答', '是的，我可以帮助你了解\n国际象棋的规则、策略和技巧。'],
+        ['再次回答', '是的，我可以帮助你理解\n国际象棋的规则、策略和战术。'],
+      ]
+    : [
+        ['回答 A：机械重复', '是的。\n是的。\n是的。'],
+        [
+          '回答 B：结合上下文',
+          '是的。\n是的，我不是已经说过了吗？\n你烦不烦，干嘛老是提同样的问题。',
+        ],
+      ];
+  answers.forEach(([label, answer], i) => {
+    const x = 40 + i * 470;
+    s += `<rect x="${x}" y="169" width="410" height="220" rx="9" fill="${i ? C.sand : C.light}" stroke="${C.line}" stroke-width="1.5"/>`;
+    s += txt(x + 205, 211, label, 22, C.green);
+    s += txt(x + 205, 274, answer, 19, C.ink);
+  });
+  return (
+    s +
+    txt(
+      480,
+      452,
+      llm
+        ? '表达形式的变化，是否体现了对上下文的理解？'
+        : '比较回答方式与上下文理解能力',
+      20,
+      C.green,
+    )
+  );
+};
 renderers.timeline = (d) => {
   let out = line(90, 260, 870, 260, C.line, false, 3);
   d.labels.forEach((s, i) => {
@@ -1005,6 +1043,43 @@ renderers.inception = (d) => {
   });
   return s + arrow(480, 396, 480, 411) + box(307, 420, 346, 50, "沿通道维拼接");
 };
+renderers['googlenet-auxiliary'] = () =>
+  txt(480, 116, '22 层主干网络（结构示意）', 22, C.ink) +
+  box(28, 181, 104, 78, '输入图像') +
+  arrow(136, 220, 176, 220) +
+  box(184, 181, 142, 78, '卷积特征') +
+  arrow(330, 220, 370, 220) +
+  box(378, 181, 150, 78, 'Inception', '中间深度 ①') +
+  arrow(532, 220, 572, 220) +
+  box(580, 181, 150, 78, 'Inception', '中间深度 ②') +
+  arrow(734, 220, 784, 220) +
+  box(792, 181, 142, 78, '主 softmax', '最终分类') +
+  arrow(453, 263, 410, 330, '', C.amber) +
+  box(310, 337, 200, 79, '辅助 softmax ①', '中间层的分类监督', C.sand) +
+  arrow(655, 263, 690, 330, '', C.amber) +
+  box(590, 337, 200, 79, '辅助 softmax ②', '中间层的分类监督', C.sand) +
+  txt(480, 467, '在中间深度增加分类输出，帮助梯度反向传播', 20, C.green);
+renderers['inception-resnet'] = () => {
+  let s = box(35, 240, 130, 72, '输入 x');
+  ['1×1 分支', '3×3 分支', '多层卷积分支'].forEach((label, i) => {
+    const y = 163 + i * 110;
+    s += arrow(170, 276, 244, y + 31, '', C.line);
+    s += box(251, y, 185, 62, label);
+    s += arrow(440, y + 31, 495, 276, '', C.line);
+  });
+  return (
+    s +
+    box(502, 240, 115, 72, '拼接') +
+    arrow(622, 276, 658, 276) +
+    box(665, 240, 112, 72, '变换') +
+    arrow(782, 276, 817, 276) +
+    circle(846, 276, 24, '+') +
+    arrow(873, 276, 928, 276) +
+    path('M100 235 V112 H846 V246', C.amber, 2.5) +
+    txt(480, 99, '输入旁路', 19, C.amber) +
+    txt(660, 426, '多尺度特征 + 残差连接', 22, C.green)
+  );
+};
 renderers.residual = (d) =>
   box(76, 230, 126, 70, "输入 x") +
   arrow(205, 265, 297, 265) +
@@ -1412,8 +1487,8 @@ renderers["beam-end"] = (d) =>
 renderers.bleu = (d) => {
   let s =
     txt(85, 134, "候选译文", 18, C.muted, "start") + txt(85, 248, "参考译文", 18, C.muted, "start");
-  const a = ["the", "cat", "is", "on", "the", "mat"],
-    b = ["the", "cat", "sat", "on", "the", "mat"];
+  const a = ["the", "cat", "sat", "on", "the", "mat"],
+    b = ["the", "cat", "is", "on", "the", "mat"];
   a.forEach((w, i) => (s += box(70 + i * 145, 153, 124, 55, w, "", i === 2 ? C.sand : C.light)));
   b.forEach((w, i) => (s += box(70 + i * 145, 268, 124, 55, w, "", i === 2 ? C.pale : C.light)));
   return (

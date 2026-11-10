@@ -1,14 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { esc } from './diagrams/drawing.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const manifest = JSON.parse(
-  fs.readFileSync(path.join(root, 'public/diagrams/manifest.json'), 'utf8'),
+  fs.readFileSync(
+    path.join(root, 'public/model-foundations/diagrams/manifest.json'),
+    'utf8',
+  ),
 );
 const entries = new Map(manifest.map((m) => [`${m.lesson}/${m.page}`, m]));
 const files = fs
-  .readdirSync(path.join(root, 'content'))
+  .readdirSync(path.join(root, 'content/model-foundations'))
   .filter((f) => f.endsWith('.json'))
   .sort();
 assert.equal(
@@ -19,19 +23,34 @@ assert.equal(
 const elements = new Set();
 for (const [i, file] of files.entries()) {
   const { slides } = JSON.parse(
-    fs.readFileSync(path.join(root, 'content', file), 'utf8'),
+    fs.readFileSync(path.join(root, 'content/model-foundations', file), 'utf8'),
   );
   for (const slide of slides) {
     const m = entries.get(`${i + 1}/${slide.page}`);
     assert(m, `Missing figure for ${file}, page ${slide.page}`);
-    assert.equal(slide.figure.url, m.url);
-    assert.equal(slide.figure.title, m.title);
+    for (const key of [
+      'url',
+      'kind',
+      'title',
+      'caption',
+      'note',
+      'sourceElements',
+    ])
+      assert.deepEqual(
+        slide.figure[key],
+        m[key],
+        `${file}, page ${slide.page}: ${key}`,
+      );
     const svg = fs.readFileSync(path.join(root, 'public', m.url), 'utf8');
     assert(svg.startsWith('<svg ') && svg.endsWith('</svg>'), m.url);
     assert(svg.includes('viewBox="0 72 960 417"'), m.url);
     assert(
       svg.includes('<title>') && svg.includes('<desc>'),
       `${m.url}: accessible description`,
+    );
+    assert(
+      svg.includes(`<title>${esc(slide.figure.title)}</title>`),
+      `${m.url}: SVG title must match the course content`,
     );
     assert(
       !/undefined|NaN|<script|\/materials\/\d+\//.test(

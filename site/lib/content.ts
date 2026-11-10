@@ -1,8 +1,8 @@
-import first from '@/content/01-neural-networks.json';
-import second from '@/content/02-cnns.json';
-import third from '@/content/03-rnns-lstms.json';
-import fourth from '@/content/04-transformers.json';
-import fifth from '@/content/05-self-supervised.json';
+import first from '@/content/model-foundations/01-neural-networks.json';
+import second from '@/content/model-foundations/02-cnns.json';
+import third from '@/content/model-foundations/03-rnns-lstms.json';
+import fourth from '@/content/model-foundations/04-transformers.json';
+import fifth from '@/content/model-foundations/05-self-supervised.json';
 import type { LectureContent } from './lecture-types';
 const content: Record<string, LectureContent> = {
   '01-neural-networks': first,

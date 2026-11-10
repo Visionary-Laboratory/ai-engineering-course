@@ -54,8 +54,8 @@ export default defineConfig(async () => {
             useFsEvents: false,
             usePolling: true,
             ignored: [
-              '**/public/materials/**',
-              '**/public/diagrams/**',
+              '**/public/model-foundations/materials/**',
+              '**/public/model-foundations/diagrams/**',
               '**/.wrangler/**',
               '**/dist/**',
             ],
