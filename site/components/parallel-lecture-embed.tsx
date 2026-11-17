@@ -25,11 +25,26 @@ export function ParallelLectureEmbed({
         'ai-engineering-embedded-compact',
         frame.clientWidth <= 1100,
       );
-      const nextHeight = Math.max(
-        760,
-        document.body.scrollHeight,
-        document.documentElement.scrollHeight,
+      const focused = document.querySelector<HTMLElement>(
+        '.lecture-workspace.is-focused',
       );
+      const content =
+        focused?.firstElementChild ??
+        document.querySelector('#root') ??
+        document.body;
+      // The document height is at least the iframe's current viewport height,
+      // so measuring it would prevent the frame from shrinking after a long page.
+      let contentHeight = Math.max(
+        content.scrollHeight,
+        content.getBoundingClientRect().height,
+      );
+      if (focused) {
+        const style = frame.contentWindow?.getComputedStyle(focused);
+        contentHeight +=
+          parseFloat(style?.paddingTop ?? '0') +
+          parseFloat(style?.paddingBottom ?? '0');
+      }
+      const nextHeight = Math.max(1, Math.ceil(contentHeight));
       setHeight((currentHeight) =>
         Math.abs(currentHeight - nextHeight) > 2 ? nextHeight : currentHeight,
       );
@@ -42,6 +57,9 @@ export function ParallelLectureEmbed({
     if (content) {
       observerRef.current = new ResizeObserver(updateHeight);
       observerRef.current.observe(content);
+      const tabs =
+        document?.querySelector('.lecture-workspace')?.firstElementChild;
+      if (tabs) observerRef.current.observe(tabs);
     }
     window.setTimeout(updateHeight, 750);
   }, []);

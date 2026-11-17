@@ -2,7 +2,7 @@
 
 课程网站，沿用《并行计算与算子编程》的绿色侧栏、连续阅读与翻页演示方式。支持本地预览与公开访问。
 
-当前课程包含「模型原理」六讲及「并行计算」四讲。并行计算分为「01 理解并行计算」（并行基础与性能模型、并行硬件与执行模型）和「02 走进 CUDA 编程」（CUDA编程入门（上）、CUDA编程入门（下）），均在 AI 工程学课程内阅读。左右目录共用小节标题和罗马数字编号，下级内容可点击直达。
+当前课程包含「模型原理」六讲及「并行计算」六讲。并行计算分为「01 理解并行计算」（并行基础与性能模型、并行硬件与执行模型）、「02 走进 CUDA 编程」（CUDA编程入门（上）、CUDA编程入门（下））和「03 GPU 与 AI 实践」（FlashAttention、3D Gaussian Splatting），均在 AI 工程学课程内阅读。左右目录共用小节标题和罗马数字编号，下级内容可点击直达。
 
 模型六讲页面集中在 `/model-foundations/lectures/`，对应正文和资源分别集中在 `content/model-foundations/` 与 `public/model-foundations/`。
 
@@ -13,7 +13,7 @@ pnpm install --frozen-lockfile
 pnpm build:pages
 ```
 
-运行 `node scripts/publish-local.mjs` 将构建产物同步到仓库根目录，再通过 GitHub Pages 发布。该命令静态生成首页、模型原理目录和 10 讲页面，处理 `/ai-engineering-course/` 子路径，并保留生成模型与并行计算的嵌入内容。普通本地预览仍使用 `pnpm dev` 和根路径。
+运行 `node scripts/publish-local.mjs` 将构建产物同步到仓库根目录，再通过 GitHub Pages 发布。该命令静态生成首页、模型原理目录和 12 讲页面，处理 `/ai-engineering-course/` 子路径，并保留生成模型与并行计算的嵌入内容。普通本地预览仍使用 `pnpm dev` 和根路径。
 
 `public/model-foundations/materials/*/*.webp` 是本地原课件截图归档，不纳入源码提交和发布产物；教学图解、照片、动态素材与嵌入课件均保留。`scripts/check-content.mjs` 的完整来源截图核验需要本地归档；归档另存时，可设置 `COURSE_SOURCE_ARCHIVE=/绝对路径/materials`。
 
@@ -57,6 +57,7 @@ pnpm build:pages
 ## 校验与维护
 
 - `npm run check`：类型检查。
+- `node scripts/check-parallel-content.mjs`：检查 GPU 与 AI 实践的 130 页内容及 33 份配图与导入版本一致，并检查六讲入口与资源完整性。
 - `npm test`：验证五讲、739 页、原图与媒体、图解映射和素材来源，并检查正文公式；段落页码不得有缺口或重叠。
 - `npm run build`：生产编译。
 

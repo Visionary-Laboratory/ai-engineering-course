@@ -7,11 +7,11 @@
 ## 课程内容
 
 - **模型原理**：人工神经网络基础、CNN 与图像识别、RNN 与 LSTM、Transformer 模型、自监督学习、生成模型。
-- **并行计算**：01 理解并行计算（并行基础与性能模型、并行硬件与执行模型）；02 走进 CUDA 编程（CUDA编程入门（上）、CUDA编程入门（下））。
+- **并行计算**：01 理解并行计算（并行基础与性能模型、并行硬件与执行模型）；02 走进 CUDA 编程（CUDA编程入门（上）、CUDA编程入门（下））；03 GPU 与 AI 实践（FlashAttention、3D Gaussian Splatting）。
 
-共 10 讲。模型原理和并行计算共用 AI 工程学课程框架；章节使用 `01`、`02` 编号，小节使用罗马数字。生成模型包含 Part I 与 Part II，提供 43 个阅读主题和 114 个演示步骤。
+共 12 讲。模型原理和并行计算共用 AI 工程学课程框架；章节使用 `01`、`02`、`03` 编号，小节使用罗马数字。生成模型包含 Part I 与 Part II，提供 43 个阅读主题和 114 个演示步骤。
 
-模型原理的页面、图解、媒体和原版课件统一位于 `model-foundations/`，六讲入口为 `model-foundations/lectures/`。并行计算的四讲内容与资源位于 `parallel-computing/`，在主课程内通过 `lectures/parallel-*` 阅读。
+模型原理的页面、图解、媒体和原版课件统一位于 `model-foundations/`，六讲入口为 `model-foundations/lectures/`。并行计算的六讲内容与资源位于 `parallel-computing/`，在主课程内通过 `lectures/parallel-*` 阅读。
 
 源码中的模型正文位于 `site/content/model-foundations/`，资源位于 `site/public/model-foundations/`；并行计算资源位于 `site/public/parallel-computing/`。
 

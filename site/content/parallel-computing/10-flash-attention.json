@@ -1,0 +1,452 @@
+{
+  "title": "FlashAttention：从在线 Softmax 到现代 GPU 流水线",
+  "summary": "从 Attention 的数学目标出发，依次拆解 FA1、FA2、FA3、FA4 的瓶颈、工作分配与流水设计。",
+  "status": "published",
+  "date": "2026-11-17",
+  "slides": [
+    {
+      "id": "topic-3d13230b6c",
+      "title": "FlashAttention：从计算目标到执行效率",
+      "markdown": "## FlashAttention：从计算目标到执行效率\n\nAttention 的任务是：**根据相关程度，对信息做一次加权汇总。**\n\nQuery 提出查询，Key 用来匹配，Value 提供要汇总的内容。它把前面学过的矩阵乘、Softmax、归约与片上复用接在一起。\n\n本讲先用四个 Key 算出一个确定的答案，再沿四代实现追踪同一个问题：**得到这个答案，数据怎样存放，工作怎样分配，执行怎样安排？**\n\n从显存搬运出发，逐步走到线程分工、异步重叠与不同硬件资源的配合。",
+      "answer": "",
+      "section": "Attention 的任务与优化路线"
+    },
+    {
+      "id": "generations",
+      "title": "四代 FlashAttention：瓶颈推动设计变化",
+      "markdown": "## 四代 FlashAttention：瓶颈推动设计变化\n\n| 版本 | 遇到的主要问题 | 优化动机 |\n| --- | --- | --- |\n| FA1 | 巨大中间矩阵反复进出显存 | 算一小块，立即用于更新输出 |\n| FA2 | 任务不够分、局部结果还要合并 | 展开独立输出，减少协作成本 |\n| FA3 | 不同计算阶段互相等待 | 用另一份独立工作填补等待 |\n| FA4 | 矩阵乘提速，其他资源跟不上 | 重新平衡计算、搬运与流水线 |\n\n后续每一代都从“上一代解决了什么，还剩什么成本”展开。[FA1](https://arxiv.org/abs/2205.14135) · [FA2](https://arxiv.org/abs/2307.08691) · [FA3](https://arxiv.org/abs/2407.08608) · [FA4](https://arxiv.org/abs/2603.05451)",
+      "answer": "",
+      "section": "Attention 的任务与优化路线"
+    },
+    {
+      "id": "topic-074532e9c8",
+      "title": "Q、K、V：匹配信息，再汇总内容",
+      "markdown": "## Q、K、V：匹配信息，再汇总内容\n\n把一行 Query 看作一次查询：它逐一比较各行 Key，再决定各行 Value 应占多大权重。\n\n| 数据 | 直观作用 | 一个 Query 的处理过程 |\n| --- | --- | --- |\n| Q：Query | 我要找什么 | 提供查询特征 |\n| K：Key | 每个候选怎样与查询匹配 | 比较后得到相关性分数 |\n| V：Value | 候选能提供什么内容 | 按权重汇总，形成输出 O |\n\nSoftmax 把分数变成总和为 1 的权重。分数越大，通常获得越大的权重。\n\n**每个 Query 都有自己的权重和输出。** 先只看一个 Query、四个候选，Value 暂时用一个数表示。",
+      "answer": "",
+      "section": "Attention 的任务与优化路线"
+    },
+    {
+      "id": "attention-small-example",
+      "title": "四个 Key：先算一次加权汇总",
+      "markdown": "## 四个 Key：先算一次加权汇总\n\n假设一个 Query 对四个 Key 的未归一化权重为 **[1,2,4,8]**，对应 Value 为 **[2,4,6,8]**：\n\n| Key | 0 | 1 | 2 | 3 |\n| --- | ---: | ---: | ---: | ---: |\n| 未归一化权重 | 1 | 2 | 4 | 8 |\n| Value | 2 | 4 | 6 | 8 |\n| 权重 × Value | 2 | 8 | 24 | 64 |\n\n$$O=\\frac{2+8+24+64}{1+2+4+8}=\\frac{98}{15}\\approx6.533333.$$\n\n这些权重可以来自分数 $[0,\\ln2,\\ln4,\\ln8]$ 的指数。先记住答案 **98/15**；后面改变分块与处理顺序，都要回到同一个加权汇总。",
+      "answer": "",
+      "section": "Attention 的任务与优化路线"
+    },
+    {
+      "id": "attention-math",
+      "title": "把加权汇总写成 Attention 的矩阵形式",
+      "markdown": "## 把加权汇总写成 Attention 的矩阵形式\n\n现在把许多 Query 一起计算，并把标量 Value 扩展为向量。固定一个 head：\n\n| 张量 | 形状 | 每一行的含义 |\n| --- | --- | --- |\n| Q | $L_q\\times d$ | 一个查询的特征 |\n| K | $L_k\\times d$ | 一个候选的匹配特征 |\n| V | $L_k\\times d_v$ | 一个候选提供的内容 |\n| O | $L_q\\times d_v$ | 一个查询汇总出的内容 |\n\n$$S=QK^{\\mathsf T}/\\sqrt d,\\quad P=\\operatorname{softmax}(S),\\quad O=PV.$$\n\n两次矩阵乘之间夹着逐行 Softmax。后面主线取 $L_q=L_k=N$、$d_v=d$，无 dropout；N 是序列长度，d 是每个 head 的特征维度。",
+      "answer": "",
+      "section": "Attention 的任务与优化路线"
+    },
+    {
+      "id": "topic-3bffce9442",
+      "title": "FA1 的动机：中间矩阵的显存往返",
+      "markdown": "## FA1 的动机：中间矩阵的显存往返\n\n按三个独立步骤执行 Attention 时，中间结果会这样传递：\n\n```text\nQKᵀ      → 完整 S 写入显存\nSoftmax  → 读取 S，完整 P 写入显存\nPV       → 读取 P，得到输出 O\n```\n\nS 和 P 都有 $N\\times N$ 个元素，N 翻倍，元素数变为四倍。它们最终只用于生成输出，却可能付出大量存储与读写成本。\n\n**FA1 的出发点：只算当前需要的一小块，立即更新输出，随后释放这块中间数据。** 难点是 Softmax 需要整行的分母，必须找到能分批更新的办法。[FA1 论文](https://arxiv.org/abs/2205.14135)",
+      "answer": "",
+      "section": "FA1：减少中间矩阵的显存读写"
+    },
+    {
+      "id": "topic-d6711b4bd1",
+      "title": "上下文翻倍，显存为什么先告急？",
+      "markdown": "## 上下文翻倍，显存为什么先告急？\n\n\n```attention-memory-lab\n```\n\n这里单独计算 Attention 张量的有效载荷。训练模型还要加参数、梯度、优化器状态与其他激活。",
+      "answer": "",
+      "section": "FA1：减少中间矩阵的显存读写"
+    },
+    {
+      "id": "topic-5b7653df67",
+      "title": "FA1 的思路：分数块算完，立即服务于输出",
+      "markdown": "## FA1 的思路：分数块算完，立即服务于输出\n\n第六讲的 GEMM 分块让输入在片上复用。Attention 再向前走一步：**把 QK、Softmax 与 PV 的局部工作接起来，缩短中间结果的存活时间。**\n\n[![朴素 Attention 与分块融合的数据存储比较](/materials/lectures/13/figures/attention-io.svg)](/materials/lectures/13/figures/attention-io.svg)\n\n每次只保留当前分数块与必要的累计状态。接下来先看熟悉的 PyTorch 表达，再用四 Key 算例解决“分母尚未读完，怎样累计输出”。",
+      "answer": "",
+      "section": "FA1：减少中间矩阵的显存读写"
+    },
+    {
+      "id": "topic-ab91b741ba",
+      "title": "PyTorch 中的完整 Attention 核心",
+      "markdown": "## PyTorch 中的完整 Attention 核心\n\n`q、k、v` 的形状为 `[batch, heads, N, d]`。下面展示相同输入上的两条前向路径：\n\n```python\nimport torch\nimport torch.nn.functional as F\n\n# 显式路径：形成完整的分数与概率矩阵\nscores = (q @ k.transpose(-2, -1)) / (q.shape[-1] ** 0.5)\nprobabilities = torch.softmax(scores, dim=-1)\no_explicit = probabilities @ v\n\n# SDPA 接口：由后端实现缩放点积 Attention\no_sdpa = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0)\n```\n\n`@` 是矩阵乘；`transpose(-2,-1)` 交换最后两个维度；`dim=-1` 表示沿每行 Key 方向归一化。SDPA 是算子接口，不能仅凭函数名判断 FA 版本。[PyTorch 文档](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html)",
+      "answer": "",
+      "section": "FA1：减少中间矩阵的显存读写"
+    },
+    {
+      "id": "classroom-10",
+      "title": "课堂源码与运行环境",
+      "markdown": "## 课堂源码与运行环境\n\n以下文件用于教师课堂演示，核心代码在后续页面逐步展示；命令在对应演示目录中运行。\n\n| 文件 | 用途 | 环境 |\n| --- | --- | --- |\n| `attention_online_demo.py` | 四 Key 在线算法，改变分块大小 | Python 标准库 |\n| `attention_benchmark.py` | 显式 S/P 与融合 SDPA 对照 | CUDA 版 PyTorch |\n| `attention_reference.py` | 掩码、尾部与梯度的扩展校验 | Python 标准库 |\n\n```bat\npython attention_online_demo.py\n```\n\n课堂 GPU 环境为 RTX 5090 Laptop、PyTorch 2.11.0+cu128。该环境的 Windows 包未编译原生 Flash 后端；实测显式选择 **cuDNN SDPA** 来观察融合效果。FA1–FA4 的版本差异按照论文逐步拆解。",
+      "answer": "",
+      "section": "FA1：减少中间矩阵的显存读写"
+    },
+    {
+      "id": "topic-cdc49ac482",
+      "title": "分批汇总：保留分子与分母，最后再相除",
+      "markdown": "## 分批汇总：保留分子与分母，最后再相除\n\n四个 Key 分成前后两批。先不考虑指数溢出，只把加权平均拆开：\n\n| 数据 | 权重和：分母 | 权重乘 Value 的和：分子 |\n| --- | ---: | ---: |\n| Key 0、1 | $1+2=3$ | $2+8=10$ |\n| Key 2、3 | $4+8=12$ | $24+64=88$ |\n| 合并 | 15 | 98 |\n\n输出仍为 **98/15**。旧块只留下这两个累计量，就能继续读新块。\n\n如果只保存局部平均 $10/3$ 与 $88/12$，再直接平均，会得到错误的 5.333333。**两批的权重不同，必须保留各自的权重总量。**",
+      "answer": "",
+      "section": "FA1：分块与在线 Softmax"
+    },
+    {
+      "id": "softmax-definition",
+      "title": "Softmax：把一组分数变成总和为 1 的权重",
+      "markdown": "## Softmax：把一组分数变成总和为 1 的权重\n\n输入是**同一个 Query 对所有 Key 的分数** $x=[x_0,\\ldots,x_{N-1}]$；输出是同样长度的权重向量 $p$。对第 j 个 Key：\n\n$$p_j=\\operatorname{softmax}(x)_j=\\frac{e^{x_j}}{\\sum_{i=0}^{N-1}e^{x_i}}.$$\n\n| 步骤 | 四个 Key 的例子 |\n| --- | --- |\n| 输入分数 x | $[0,\\ln2,\\ln4,\\ln8]$ |\n| 每个分数取指数，得到正数 | $[1,2,4,8]$ |\n| 所有指数相加，得到共同分母 | $1+2+4+8=15$ |\n| 每项除以 15，得到 Softmax 输出 p | $[1/15,2/15,4/15,8/15]$，总和为 1 |\n\n**Softmax 到 p 就结束了。** Attention 再用这些权重汇总 Value：$O=\\sum_jp_jv_j=98/15$。Value 不参与 Softmax 的定义。\n\n分母中的 i 遍历整行所有 Key，j 标出当前计算哪一项。接下来解决分数很大时，指数如何避免溢出。",
+      "answer": "",
+      "section": "FA1：分块与在线 Softmax"
+    },
+    {
+      "id": "topic-fac131079c",
+      "title": "稳定 Softmax：先统一尺度，再合并累计量",
+      "markdown": "## 稳定 Softmax：先统一尺度，再合并累计量\n\n指数会把大分数变成很大的数。为避免溢出，可以把所有权重一起缩小，同时保持它们的比例。\n\n四个未归一化权重 $[1,2,4,8]$ 同时除以 8，变成 $[1/8,1/4,1/2,1]$。归一化时分子、分母都缩小 8 倍，每个 $p_j$ 保持不变：\n\n$$\np_j=\\frac{e^{x_j}}{\\sum_i e^{x_i}}\n=\\frac{e^{x_j-r}}{\\sum_i e^{x_i-r}}.\n$$\n\n取 $r=\\max_i x_i$，每个指数不大于 1；本例 $r=\\ln8$。减去 r 等于把所有指数都除以 $e^r$，权重 p 不变，所以后续 Attention 输出仍为 98/15。\n\n分批读取时，如果参考值变了，旧累计量也要换到新的尺度。\n\n后面用 $x_2=x\\log_2e$ 将指数写成 $2^{x_2}$，分数恰为 **[0,1,2,3]**，便于手算。",
+      "answer": "",
+      "section": "FA1：分块与在线 Softmax"
+    },
+    {
+      "id": "online-state",
+      "title": "在线 Softmax：把已经读过的数据记在三个状态里",
+      "markdown": "## 在线 Softmax：把已经读过的数据记在三个状态里\n\n把处理过程想成一份累计账本：每读一批，就更新总量，随后继续读下一批。\n\n| 状态 | 在累计账本中的作用 | 四 Key 例子 |\n| --- | --- | --- |\n| $r$ | 记录当前使用的参考尺度 | 标准更新选择已读分数的最大值 |\n| $\\ell$ | 累计相对权重 | 加权平均的分母 |\n| $u$ | 累计相对权重 × Value | 加权平均的分子 |\n\n**读完全部 Key 后，输出 $O=u/\\ell$。** Value 是向量时，u 也变成向量，仍逐分量累计。\n\n“在线”表示数据分批到达时持续更新结果。新旧两批如果使用不同参考值，合并前先统一尺度。",
+      "answer": "",
+      "section": "FA1：分块与在线 Softmax"
+    },
+    {
+      "id": "topic-3c3869e058",
+      "title": "第一块与第二块，必须使用同一数值尺度",
+      "markdown": "## 第一块与第二块，必须使用同一数值尺度\n\n先读 base-2 分数 `[0,1]`、Value `[2,4]`：以 1 为参考，相对权重为 `[0.5,1]`，得到 $\\ell=1.5$、$u=5$。\n\n再读 `[2,3]`、Value `[6,8]`，新参考变为 3。旧贡献须乘 $2^{1-3}=1/4$：\n\n| 步骤 | 分母 $\\ell$ | 分子 $u$ |\n| --- | ---: | ---: |\n| 旧状态换尺度 | $1.5/4=0.375$ | $5/4=1.25$ |\n| 新块的贡献 | $0.5+1=1.5$ | $0.5\\times6+1\\times8=11$ |\n| 合并 | 1.875 | 12.25 |\n\n这相当于把旧账本与新账本换成同一单位，再合账。分子、分母一起缩放，旧块内部的加权平均不变；最终 $12.25/1.875=6.533333$。",
+      "answer": "",
+      "section": "FA1：分块与在线 Softmax"
+    },
+    {
+      "id": "topic-585d340a54",
+      "title": "参考变了，旧状态要一起换单位",
+      "markdown": "## 参考变了，旧状态要一起换单位\n\n\n新块 $B$ 到达后，标准更新选择 $r'=\\max(r,\\max_{j\\in B}x_j)$，令 $a=e^{r-r'}$。\n\n$$\n\\ell'=a\\ell+\\sum_{j\\in B}e^{x_j-r'}\n$$\n\n$$\nu'=au+\\sum_{j\\in B}e^{x_j-r'}v_j\n$$\n\n旧分子与旧分母同时乘 $a$，表示它们已经换到新参考 $r'$ 下。输出只在读完后除一次。",
+      "answer": "",
+      "section": "FA1：分块与在线 Softmax"
+    },
+    {
+      "id": "topic-cd5f229130",
+      "title": "在线更新：读取、缩放、累加与输出",
+      "markdown": "## 在线更新：读取、缩放、累加与输出\n\n```attention-walkthrough\n```",
+      "answer": "",
+      "section": "FA1：分块与在线 Softmax"
+    },
+    {
+      "id": "online-code-context",
+      "title": "代码中的变量与输入约定",
+      "markdown": "## 代码中的变量与输入约定\n\n下面是 **单行、标量 Value、base-2 分数** 的完整计算函数；它在 CPU 上解释算法，不是某一代 CUDA 内核。\n\n| 变量 | 含义 |\n| --- | --- |\n| `scores`、`values` | `[0,1,2,3]` 与 `[2,4,6,8]` |\n| `block_size`、`start` | 每块项数、当前块起点；不是 CUDA block 线程数 |\n| `r`、`new_r`、`scale` | 旧参考、新参考、旧状态缩放倍数 |\n| `denominator`、`numerator` | $\\ell$ 与 $u$ |\n| `j`、`values[start+j]` | 块内位置、该 Key 对应的 Value |\n\n`enumerate(block)` 逐项给出块内位置与分数，`**` 表示乘方。初始化分母、分子为 0；`-inf` 表示屏蔽分数。整块屏蔽时跳过，整行无有效项时本例返回 0。",
+      "answer": "",
+      "section": "FA1：分块与在线 Softmax"
+    },
+    {
+      "id": "topic-038d063921",
+      "title": "在线 Attention 的完整计算过程",
+      "markdown": "## 在线 Attention 的完整计算过程\n\n```python\nimport math\n\ndef online_row(scores, values, block_size=2):\n    r = -math.inf\n    denominator = numerator = 0.0\n    for start in range(0, len(scores), block_size):\n        block = scores[start:start + block_size]\n        block_max = max(block)\n        if block_max == -math.inf:\n            continue\n        new_r = max(r, block_max)\n        scale = 0.0 if r == -math.inf else 2.0 ** (r - new_r)\n        denominator *= scale\n        numerator *= scale\n        for j, score in enumerate(block):\n            weight = 2.0 ** (score - new_r)\n            denominator += weight\n            numerator += weight * values[start + j]\n        r = new_r\n    return numerator / denominator if denominator else 0.0\n```\n\n完整课堂程序另含输入检查和独立稠密参考。这里每轮只生成当前块的相对权重，最终仅除一次。",
+      "answer": "",
+      "section": "FA1：分块与在线 Softmax"
+    },
+    {
+      "id": "online-vector",
+      "title": "Value 是向量时，哪些状态会变大",
+      "markdown": "## Value 是向量时，哪些状态会变大\n\n若每个 Value 有 64 个分量，每个 Query 的 $u$ 也有 64 个分量；$r$ 和 $\\ell$ 仍各只有一个数。\n\n```text\nu[0] = scale*u[0] + Σ weight[j]*V[j,0]\nu[1] = scale*u[1] + Σ weight[j]*V[j,1]\n...\nu[63] = scale*u[63] + Σ weight[j]*V[j,63]\n```\n\n一次处理多行 Query 时，当前分数块来自 $Q_{tile}K_{tile}^{T}$，上述 64 个分量的加权累加来自 $P_{tile}V_{tile}$，因此又回到两次矩阵乘。\n\n**分块状态是逐 Query 行维护的，不是整个 block 共用一个 Softmax 分母。**",
+      "answer": "",
+      "section": "FA1：分块与在线 Softmax"
+    },
+    {
+      "id": "online-run",
+      "title": "运行验证：换分块大小，答案不变",
+      "markdown": "## 运行验证：换分块大小，答案不变\n\n```bat\npython attention_online_demo.py\n```\n\n```text\nDense reference = 6.533333\nBlock size 1    = 6.533333\nBlock size 2    = 6.533333\nBlock size 4    = 6.533333\nChecks: 45 PASS (tails, masks, large scores)\n```\n\n先观察“每次只看一个、两个或四个 Key”得到同一答案，再看 GPU 如何组织这些数据。这个实验验证算法与边界处理，不测 GPU 性能。",
+      "answer": "",
+      "section": "FA1：分块与在线 Softmax"
+    },
+    {
+      "id": "fa1-loop-walkthrough",
+      "title": "FA1 的双层循环：固定 K/V，依次处理 Q",
+      "markdown": "## FA1 的双层循环：固定 K/V，依次处理 Q\n\n把 Q 分成 **Q₀、Q₁ 两块**；K/V 按相同的行分成 **K₀/V₀、K₁/V₁ 两对块**。下标是块号；O₀、O₁ 分别对应两组 Query 的输出。\n\n![FA1 的外层固定 K/V，内层依次处理 Q0、Q1；按①②③④更新对应输出](/materials/lectures/10/figures/fa1-loop-order.svg)\n\n**外层每前进一步，内层都从头走完一遍。** ①②使用同一块 K₀/V₀；③④使用同一块 K₁/V₁，每个 Q 块最终都看过全部 Key。\n\nO₀ 在①③更新，O₁ 在②④更新，需保留各自的旧结果与统计量。块内计算仍由许多 GPU 线程并行完成。",
+      "answer": "",
+      "section": "FA1：分块与在线 Softmax"
+    },
+    {
+      "id": "topic-7daf3f17b0",
+      "title": "原论文读图：FA1 把中间矩阵留在哪里？",
+      "markdown": "## 原论文读图：FA1 把中间矩阵留在哪里？\n\n```paper-figure\nfa1-io\n```\n\n- **左：放在哪里。** SRAM 是片上存储，HBM 是显存，CPU DRAM 是主机内存；20 MB 是片上总量，不是单个 block 的容量。\n- **中：两层循环。** Outer Loop（外层）搬入并固定 K/V；Inner Loop（内层）逐块搬入 Q 及旧输出/统计量，更新后写回 HBM。Copy 是搬入，Output to HBM 是写回；`sm` 是 Softmax。\n- **右：融合步骤。** Matmul / Mask / Dropout 是矩阵乘、掩码、随机丢弃；Fused Kernel 是融合内核，Time 单位为毫秒。N 是序列长度，d 是 head 维度，$K^T$ 表示转置。\n\n**避免的是完整 $N\\times N$ 分数与概率矩阵的显存往返。** 图中带宽、容量和时间均来自原论文环境。",
+      "answer": "",
+      "section": "FA1：分块与在线 Softmax"
+    },
+    {
+      "id": "topic-8e2e69d913",
+      "title": "Attention 的计算量：两个矩阵乘分别数",
+      "markdown": "## Attention 的计算量：两个矩阵乘分别数\n\n先看 **一个样本、一个 head**：N 个 Query 和 N 个 Key，Q/K/V 每行均为 d 维；所有 Query 都看全部 Key。长度 k 的点积按约 2k FLOPs 计（乘、加各一次）。\n\n| 步骤 | 要算多少个输出数？ | 每个数怎样算？ | 运算量 |\n| --- | --- | --- | --- |\n| $S=QK^T$：算分数 | $N\\times N$ 个分数 | 两个 d 维向量点积，约 2d 次 | $2N^2d$ |\n| $O=PV$：汇总 Value | $N\\times d$ 个输出分量 | 沿 N 个 Key 加权求和，约 2N 次 | $2N^2d$ |\n\n**例：N=4、d=2。** 算分数：16 个数 × 4 次 = 64；汇总：8 个数 × 8 次 = 64。两次矩阵乘共计 128 FLOPs。\n\n若有 B 个样本、每个样本 H 个 head，上述工作重复 BH 份：\n\n$$F_{\\rm matmul}\\approx BH\\times(2N^2d+2N^2d)=4BHN^2d.$$\n\nSoftmax 等操作另计。**分块省掉中间矩阵的存储与搬运，配对仍全部计算；N 翻倍，主要算量约变成 4 倍。**",
+      "answer": "",
+      "section": "FA1：分块与在线 Softmax"
+    },
+    {
+      "id": "fa2-bottleneck",
+      "title": "从 FA1 到 FA2：减少搬运之后，改善工作分配",
+      "markdown": "## 从 FA1 到 FA2：减少搬运之后，改善工作分配\n\nFA1 避开了完整 S/P 的显存往返，但 GPU 还可能有空闲资源或额外协作成本。\n\n| 剩下的问题 | 直观表现 | FA2 的改进方向 |\n| --- | --- | --- |\n| 独立任务太少 | 有些 SM 没分到足够工作 | 沿 Query 行展开更多任务 |\n| 一个输出分给多个 warp | 算完还要交接、合并 | 让各组负责完整输出行 |\n| 反复归一化输出 | 同一向量重复做除法等操作 | 累计分子，最后统一归一化 |\n\n**FA2 先重新安排“谁负责哪些结果”，再减少完成这些结果所需的协作。**[FA2 论文](https://tridao.me/publications/flash2/flash2.pdf)",
+      "answer": "",
+      "section": "FA2：重新划分工作与状态"
+    },
+    {
+      "id": "topic-0ad6f68f6a",
+      "title": "FA2：把独立的 Query 输出分给更多 block",
+      "markdown": "## FA2：把独立的 Query 输出分给更多 block\n\n不同 Query 行有自己的权重和输出，因此可以分别交给不同 block（CTA，即线程块）。\n\n设 batch=1、head 数=8，每个 head 有 8192 行 Query：\n\n| 分工方式 | 独立输出任务 |\n| --- | ---: |\n| 只按 batch 和 head 粗分 | 8 个 |\n| 每个 head 按 128 行 Query 切块 | $8\\times(8192/128)=512$ 个 |\n\n面对很多 SM，更多独立任务能让调度器更充分地分配工作。每个 block 负责自己的 Query 块，并遍历所需 K/V。\n\n512 是总任务数，不是同时驻留的 block 数；还要检查资源占用与 K/V 复用。",
+      "answer": "",
+      "section": "FA2：重新划分工作与状态"
+    },
+    {
+      "id": "topic-2d4e0375b4",
+      "title": "原论文读图：一个 block 负责哪些 Query？",
+      "markdown": "## 原论文读图：一个 block 负责哪些 Query？\n\n上一页把一个 head 拆成许多 Query 块；这张图标出每个 block 具体负责哪里。\n\n```paper-figure\nfa2-blocks\n```\n\n- **左图 Forward（前向）：** 行是 Query 块，列是 Key 块；每格是一块分数矩阵。每种颜色的 Worker 是一个线程块（CTA），它沿负责的行遍历 K/V，生成这些行的输出。\n- **三角形：** 图中采用因果 Attention，Query 只能看当前位置及之前的 Key，所以右上方的未来位置被屏蔽。\n- **右图 Backward（反向）：** 按列块组织工作，便于汇总对应 K/V 的梯度；反向还有其他合并步骤，后面再展开。\n\n先抓住前向的结论：**固定 Q 块，遍历 K/V，保留自己的输出状态。** 下一页把它写成循环与状态归属。",
+      "answer": "",
+      "section": "FA2：重新划分工作与状态"
+    },
+    {
+      "id": "fa-loop-order",
+      "title": "从 FA1 到 FA2：改变循环与状态的归属",
+      "markdown": "## 从 FA1 到 FA2：改变循环与状态的归属\n\n| FA1 原始算法图 | FA2 的 Query 分块组织 |\n| --- | --- |\n| 外层遍历 K/V 块，内层遍历 Q 块 | 一个 CTA 负责固定 Q 块，内部遍历 K/V |\n| 反复更新各 Q 块的输出与统计量 | 本 CTA 保留自己的行状态直到完成 |\n| 优先减少大矩阵的显存往返 | 进一步展开 Query 并行，减少通信和重复操作 |\n\n前面的单行 CPU 函数固定一个 Query，方便看清在线状态；它不是 FA1 原始 GPU 调度顺序的逐行翻译。\n\n两种组织都使用分块与重缩放，优化的层次不同。[FA2 论文](https://tridao.me/publications/flash2/flash2.pdf)",
+      "answer": "",
+      "section": "FA2：重新划分工作与状态"
+    },
+    {
+      "id": "fa2-warp-example",
+      "title": "两个 warp：分 Key 还是分 Query",
+      "markdown": "## 两个 warp：分 Key 还是分 Query\n\n教学缩小为 **4 行 Query、4 行 Key**，只看一个 block 内的两个 warp：\n\n| 划分方式 | Warp 0 | Warp 1 | 还要做什么 |\n| --- | --- | --- | --- |\n| 沿 Key 切 | Q0–Q3 × K0–K1 | Q0–Q3 × K2–K3 | 两边都有同一输出行的部分贡献，须合并 |\n| 沿 Query 切 | Q0–Q1 × K0–K3 | Q2–Q3 × K0–K3 | 各自完整负责输出行，减少跨 warp 合并 |\n\n这与第七讲归约相联系：**把同一结果拆给多组算，最后就要把它们收回来。**\n\n共享的 K/V 仍需要合作加载。两个 warp 和四行只是教学尺寸，不是论文 kernel 的固定配置。",
+      "answer": "",
+      "section": "FA2：重新划分工作与状态"
+    },
+    {
+      "id": "topic-e6e22df58c",
+      "title": "原论文读图：FA2 为什么沿 Q 分工？",
+      "markdown": "## 原论文读图：FA2 为什么沿 Q 分工？\n\n把刚才的两个 warp 扩展为图中的四个，仍只看**一个 block 内部**。\n\n```paper-figure\nfa2-warps\n```\n\n- **读图例：** 蓝色 Accessed by all warps 表示各 warp 都会访问；橙色 Split across different warps 表示由不同 warp 分担。\n- **左图 FA1：** Q 共享，Kᵀ / V 按 Key 切给 Warp 1–4。同一输出行由多组贡献，算完需要合并。Kᵀ 画成横条、V 画成竖条，是转置改变了 Key 维度的方向。\n- **右图 FA2：** Q 按行切分，Kᵀ / V 共享；每个 warp 扫过所需 Key，负责完整输出行，减少部分结果的交接。\n\n**输出行更独立，K/V 仍需合作加载和同步。** 下一步再减少每行内部重复的归一化操作。",
+      "answer": "",
+      "section": "FA2：重新划分工作与状态"
+    },
+    {
+      "id": "topic-6f82285fb9",
+      "title": "FA2：累计分子，减少重复归一化",
+      "markdown": "## FA2：累计分子，减少重复归一化\n\n前面的参考代码保留未归一化的 u，最后才除以分母。这样写也能减少 GPU 上的重复操作。\n\n设一个 Query 的输出有 64 个分量，共处理 8 个 K/V 块，只看输出归一化：\n\n| 写法 | 示意中的分量归一化次数 |\n| --- | ---: |\n| 每读一块就重新归一化输出 | $8\\times64=512$ |\n| 累计 u，最后统一归一化 | 64 |\n\n矩阵乘由 Tensor Core 高效执行；归约、指数、输出修正使用其他执行资源。**操作数量少，不代表耗时占比小。**\n\n延后除法能省去重复工作；参考尺度变化时，仍需同步调整分子、分母。[FA2 论文](https://tridao.me/publications/flash2/flash2.pdf)",
+      "answer": "",
+      "section": "FA2：重新划分工作与状态"
+    },
+    {
+      "id": "topic-efea4e5494",
+      "title": "沿 Query 分工后，K/V 仍可能被重复请求",
+      "markdown": "## 沿 Query 分工后，K/V 仍可能被重复请求\n\n教学模型：一个 CTA 独占 128 行 Query，遍历 $N=8192$ 个 K/V；$d=128$、每元素 2 B。\n\n| 项目 | 计算 |\n| --- | --- |\n| 一个 head 的 Query tile 数 | $8192/128=64$ |\n| 每个 CTA 读取一遍 K 和 V | $2\\times8192\\times128\\times2=4$ MiB |\n| 64 个 CTA 合计请求 | $64\\times4=256$ MiB |\n\n减少 S/P 的写回，不等于 Q/K/V 只读一次。以上是忽略跨 CTA 缓存复用的请求量，L2 可能减少实际 HBM 流量。",
+      "answer": "",
+      "section": "FA2：重新划分工作与状态"
+    },
+    {
+      "id": "topic-aa0ddbbe76",
+      "title": "回看 FA2：三层判断要同时成立",
+      "markdown": "## 回看 FA2：三层判断要同时成立\n\n\n一个候选方案沿 Q 切得更细：更多 CTA、更少每块状态、但 K/V 请求增加。\n\n不要只看 occupancy，建立三个检查：输出是否独占；设备是否有足够工作；复用损失是否抵消了并行收益。",
+      "answer": "",
+      "section": "FA2：重新划分工作与状态"
+    },
+    {
+      "id": "topic-4010c9e513",
+      "title": "从 FA2 到 FA3：工作分好了，阶段仍会等待",
+      "markdown": "## 从 FA2 到 FA3：工作分好了，阶段仍会等待\n\nFA2 改善了任务分工。对同一个 Query 块，计算依赖仍然是 **QK → Softmax → PV**。\n\n如果把这些阶段依次执行：\n\n| 当前阶段 | 主要在工作的资源 | 可能等待的资源 |\n| --- | --- | --- |\n| 计算分数 QK | Tensor Core | 普通算术与指数单元 |\n| 计算权重 Softmax | 普通算术与指数单元 | Tensor Core |\n| 加权汇总 PV | Tensor Core | 普通算术与指数单元 |\n\n**FA3 的动机：一份工作在做 Softmax 时，让矩阵单元处理另一份独立工作。** 每份工作的先后依赖保持不变。[FA3 作者说明](https://tridao.me/blog/2024/flash3/)",
+      "answer": "",
+      "section": "FA3：安排异步重叠"
+    },
+    {
+      "id": "topic-6c0e0226ee",
+      "title": "FA3：用另一份工作填补等待时间",
+      "markdown": "## FA3：用另一份工作填补等待时间\n\nA、B 是两个独立的 Query 块。假设每次矩阵乘耗时 2、Softmax 耗时 3：\n\n[![两个 Query 块的串行与重叠执行时间线](/materials/lectures/10/figures/fa3-two-blocks.svg)](/materials/lectures/10/figures/fa3-two-blocks.svg)\n\nA 做 Softmax 时，矩阵单元计算 B 的 QK；B 做 Softmax 时，矩阵单元计算 A 的 PV。两块串行需 14 个时间单位，图中的重叠安排需 10 个。\n\n**A 的 PV 仍然等 A 的 Softmax 完成。** 这是教学时间线，省略搬运与资源竞争；与第六讲的重叠思想相通，这里安排的是 kernel 内部的工作。",
+      "answer": "",
+      "section": "FA3：安排异步重叠"
+    },
+    {
+      "id": "fa3-hardware",
+      "title": "Hopper：把重叠安排交给异步硬件",
+      "markdown": "## Hopper：把重叠安排交给异步硬件\n\n要让上一页的重叠真正发生，需要能独立推进的硬件工作。先补一个组织单位：**warpgroup = 4 个连续 warp，共 128 个线程**；这里让两组分别计算独立的 Query 输出块。\n\n| 硬件能力 | 在流水线中的作用 |\n| --- | --- |\n| TMA：Tensor Memory Accelerator，数据搬运单元 | 异步搬运后续输入，减轻线程的地址计算负担 |\n| WGMMA：Warpgroup Matrix Multiply-Accumulate，矩阵乘累加 | 一组线程协作提交异步矩阵工作 |\n| 普通算术与指数单元 | 处理 Softmax、归约和累计状态修正 |\n\n异步表示**提交后可继续安排其他工作，读取结果前仍要等待完成**。接下来先看两组之间交错，再看同一组的相邻 K/V 迭代如何交错。\n\nFA3 还研究 FP8 与误差控制，需另行评估精度。[FA3 作者说明](https://tridao.me/blog/2024/flash3/)",
+      "answer": "",
+      "section": "FA3：安排异步重叠"
+    },
+    {
+      "id": "topic-16069a803c",
+      "title": "原论文读图：FA3 的重叠发生在两组工作之间",
+      "markdown": "## 原论文读图：FA3 的重叠发生在两组工作之间\n\n```paper-figure\nfa3-pingpong\n```\n\n**先认轴与符号：** time 向右推进；两行是 Warpgroup 1 / 2，各自负责不同 Query 块。GEMM0 计算 $QK^T$，GEMM1 计算 $PV$；0、1 是两种矩阵乘的编号。同一行的同色块属于同一次 K/V 迭代。\n\n**先横读，再竖读：** 沿第一行粉色块走“分数 → Softmax → 加权求和”；再看同一时刻的第二行，第一组做 Softmax 时，第二组可以做 GEMM0。空白表示该组暂时等待，虚线帮助对齐时刻。\n\n这张调度示意解释了**两组之间**的重叠。下一页固定其中一组，进一步交错它的相邻迭代。",
+      "answer": "",
+      "section": "FA3：安排异步重叠"
+    },
+    {
+      "id": "fa3-intra-pipeline",
+      "title": "原论文读图：同一组工作也能跨迭代重叠",
+      "markdown": "## 原论文读图：同一组工作也能跨迭代重叠\n\n```paper-figure\nfa3-intra-pipeline\n```\n\n**同一个 warpgroup，三行操作：** WGMMA0 = QK，Softmax = 计算相对权重与在线状态，WGMMA1 = PV。横向是时间；块内 0、1、2 是 **K/V 块的迭代号**。图里的 N−1 表示最后一块，此处 N 是块数，与前文序列长度 N 的用法不同。\n\n沿同色 **0** 追踪：QK(0) → Softmax(0) → PV(0)。图中先在 PV(0) 之前发起 QK(1)，随后让 **PV(0) 与 Softmax(1) 重叠**；单块内部的先后依赖仍然成立。\n\n上一页借用另一组工作，这一页借用下一次迭代。需要保留两代中间数据，并在消费结果和复用缓冲前正确等待。",
+      "answer": "",
+      "section": "FA3：安排异步重叠"
+    },
+    {
+      "id": "topic-f212e83899",
+      "title": "从 FA3 到 FA4：矩阵乘提速，其他环节跟不上",
+      "markdown": "## 从 FA3 到 FA4：矩阵乘提速，其他环节跟不上\n\nFA3 已经安排了重叠，但换到新硬件时，各种资源的速度不会按同一比例提升。\n\n先看一个不含重叠的简化预算：\n\n| 情况 | 矩阵乘 | 其他工作 | 总时间 |\n| --- | ---: | ---: | ---: |\n| 原来 | 10 | 10 | 20 |\n| 只有矩阵乘提速一倍 | 5 | 10 | 15 |\n\n**一个环节快一倍，整个流程只从 20 降到 15。** 实际流水线还要看阶段重叠与依赖。\n\nFA4 面向 Blackwell：矩阵吞吐提升后，指数计算、shared 读取和输出修正更容易成为限制，因此要重新平衡各资源。[FA4 论文](https://arxiv.org/html/2603.05451v1)",
+      "answer": "",
+      "section": "FA4：适应硬件性能比例"
+    },
+    {
+      "id": "topic-420ebf1305",
+      "title": "原论文读图：矩阵乘更快，指数却可能跟不上",
+      "markdown": "## 原论文读图：矩阵乘更快，指数却可能跟不上\n\n先统一本图符号：**M 是一个 Query 块的行数，N 是一个 K/V 块的行数，d 是 head 维度**。这里 N 是局部块长，不是前文完整序列长度。\n\n```paper-figure\nfa4-roofline\n```\n\n- **列与单位：** $128^3$ 表示 $M=N=d=128$；$256\\times128^2$ 只把 M 翻倍。所有数字都是理想服务周期（cycles）。\n- **三行资源：** MMA compute 为两次矩阵乘，Shared memory 为共享内存读取，Exponential unit 为指数计算；第一列分别需 1024、768、1024 周期，Shared 一行并非容量。\n- **为何指数会卡住？** 矩阵乘有 $8{,}388{,}608$ FLOPs，指数只有 $16{,}384$ 次，但对应吞吐分别为每周期 8192 FLOPs、16 次指数，两者都需 1024 周期。\n\n这是论文 B200 的预算，各阶段可以重叠，不能把三行直接相加。接下来分别看数据路径和流水线怎样调整。",
+      "answer": "",
+      "section": "FA4：适应硬件性能比例"
+    },
+    {
+      "id": "topic-e7ee55cdff",
+      "title": "TMEM 让 P 和输出状态走上不同路径",
+      "markdown": "## TMEM 让 P 和输出状态走上不同路径\n\n先认三处存储：**SMEM 是 shared memory，寄存器供线程计算，TMEM 是 Blackwell 为 Tensor Core 中间结果提供的专用片上存储。** MMA 指矩阵乘累加。\n\n[![Blackwell FA4 的 SMEM、寄存器和 TMEM 数据路径](/materials/lectures/13/figures/fa4-path.svg)](/materials/lectures/13/figures/fa4-path.svg)\n\n沿箭头走一轮：**SMEM 中 Q/K → MMA 产生分数 S，存入 TMEM → 线程读到寄存器做 Softmax → 权重 P 写回 TMEM → 与 SMEM 中 V 做 PV，更新 TMEM 中的输出状态。**\n\n这里 P 是当前块的未归一化相对权重，输出状态对应前面的分子 u；还要维护分母 ℓ，最后得到 O=u/ℓ。本讲开头的完整概率矩阵 P 已归一化，两者须区分。\n\n*课程原创绘图；下一页沿同一路径看两块 Query 如何交错。*",
+      "answer": "",
+      "section": "FA4：适应硬件性能比例"
+    },
+    {
+      "id": "fa4-pipeline",
+      "title": "原论文读图：FA4 为什么交错两块 Query？",
+      "markdown": "## 原论文读图：FA4 为什么交错两块 Query？\n\n```paper-figure\nfa4-pipeline\n```\n\n- **左侧分工：** i 标 Q 块，j 标 K/V 块；CTA 是线程块，SM 是执行资源。每个 CTA 负责相邻两块、每块 128 行 Query；H / L 是这两块的标记（high / low），不表示高低精度。\n- **追一条数据流：** $Q^H,K_j\\to S_j^H\\to P_j^H\\to O^H$，依次是分数、权重、累计输出。图中省略在线重缩放和最终归一化；P / O 的含义沿用上一页，L 块独立走同一流程。\n- **右侧时间线：** BF16 UMMA 是 Blackwell 的 BF16 矩阵乘累加，MUFU.EX2 是算 $2^x$ 的指数指令；分数已换成 base-2 单位。Clock cycle 向右推进，H/L 交错利用矩阵与指数资源。\n\n一次 GEMM 预算 512 周期，指数阶段 1024 周期，说明**只增加矩阵吞吐仍会等待指数**。下一页进一步减少指数与输出修正的成本。",
+      "answer": "",
+      "section": "FA4：适应硬件性能比例"
+    },
+    {
+      "id": "fa4-nonmatmul",
+      "title": "FA4：为较慢的环节分担工作",
+      "markdown": "## FA4：为较慢的环节分担工作\n\n矩阵引擎继续提速以后，要减少指数和累计状态修正的等待，并降低片上搬运成本。\n\n| 成本 | 具体做法 | 为什么可能有效 |\n| --- | --- | --- |\n| 指数吞吐有限 | 部分指数用多项式近似交给 FMA 单元 | 与专用指数单元分担工作 |\n| 重缩放需要修改整个 u 向量 | 数值安全时暂时沿用旧参考值 | 减少重复的状态修正 |\n| shared 流量与阶段等待 | 使用 TMEM、重排异步 MMA 流水线 | 调整中间状态的路径与使用时机 |\n\n指数近似要核对误差；沿用参考值要检查数值范围。具体收益还取决于 tile、寄存器和输入形状。[FA4 论文](https://arxiv.org/html/2603.05451v1)",
+      "answer": "",
+      "section": "FA4：适应硬件性能比例"
+    },
+    {
+      "id": "fa4-rescaling-example",
+      "title": "条件重缩放：参考值可以暂缓更新",
+      "markdown": "## 条件重缩放：参考值可以暂缓更新\n\n仍用 base-2 分数 **[0,1,2,3]**、Value **[2,4,6,8]**。读完第一块后，参考 r=1，分母为 1.5，分子为 5。\n\n第二块到达时，有两种保持比例一致的处理方式：\n\n| 方案 | 第二块相对权重 | 分母 ℓ | 分子 u | 输出 u/ℓ |\n| --- | --- | ---: | ---: | ---: |\n| 参考更新为 3，旧状态乘 1/4 | [0.5,1] | 1.875 | 12.25 | 6.533333 |\n| 暂时沿用参考 1 | [2,4] | 7.5 | 49 | 6.533333 |\n\n第二种写法在本例中数值安全，省去旧状态的缩放。r 此时是**计算参考值**，不一定等于已经见过的最大分数。\n\n两种方式都保持分子、分母使用同一尺度。实际算法须检查数值范围，不能一直忽略参考值更新。",
+      "answer": "",
+      "section": "FA4：适应硬件性能比例"
+    },
+    {
+      "id": "topic-a6f600e4a5",
+      "title": "“Exact Attention”不表示逐位相同",
+      "markdown": "## “Exact Attention”不表示逐位相同\n\n\n先区分三个层次：\n\n| 层次 | 本讲关注的变化 |\n| --- | --- |\n| 数学问题 | 保留完整的稠密 Attention 配对 |\n| 数值算法 | 分块顺序、参考更新、重计算 |\n| 数值实现 | FP16/BF16/FP8、指数近似、归约顺序 |\n\n正确性评估同时报告绝对误差、相对误差和任务需要的梯度误差；参考接近零时，单看相对误差会误导。",
+      "answer": "",
+      "section": "反向重算与课堂评测"
+    },
+    {
+      "id": "topic-9e3727359a",
+      "title": "反向重算：用计算换取更少的中间存储",
+      "markdown": "## 反向重算：用计算换取更少的中间存储\n\n前向没有保存完整 P，反向仍需要它来计算梯度。可以重读 Q/K，只重新计算当前需要的一小块概率。\n\n动机是：**保存少量行统计量，用额外矩阵计算，换掉大矩阵的长期保存与读回。**\n\n前向把每行的参考值和分母压成一个 log-sum-exp（LSE）：\n\n$$L_i=r_i+\\log\\ell_i.$$\n\n反向重算当前分数块后，用 $P_{ij}=\\exp(S_{ij}-L_i)$ 恢复概率。这里用自然指数单位，Mask 与前向一致；主线无 dropout。",
+      "answer": "",
+      "section": "反向重算与课堂评测"
+    },
+    {
+      "id": "attention-benchmark-code",
+      "title": "评测核心：同一输入，显式指定融合后端",
+      "markdown": "## 评测核心：同一输入，显式指定融合后端\n\n显式 S/P 路径沿用开头的三步代码。融合路径只改变实现，输入形状、精度和数学目标保持一致：\n\n```python\nfrom torch.nn.attention import SDPBackend, sdpa_kernel\n\ndef fused_attention(q, k, v):\n    with sdpa_kernel(SDPBackend.CUDNN_ATTENTION):\n        return F.scaled_dot_product_attention(\n            q, k, v, dropout_p=0.0\n        )\n```\n\n`sdpa_kernel` 临时限定允许的后端；`CUDNN_ATTENTION` 指 cuDNN 的 Attention 实现。不可用时程序报错，不悄悄换成其他实现。\n\n课堂程序先对照 FP64 CPU 参考，再用 CUDA Event 计时；分配 Q/K/V 与主机传输不进入计时。",
+      "answer": "",
+      "section": "反向重算与课堂评测"
+    },
+    {
+      "id": "attention-benchmark-run",
+      "title": "课堂评测：命令与输出各表示什么",
+      "markdown": "## 课堂评测：命令与输出各表示什么\n\n```bat\npython attention_benchmark.py --n 2048 --repeats 50\n```\n\n| 参数 / 输出 | 含义 |\n| --- | --- |\n| `--n 2048` | 每个 head 的序列长度；固定 B=1、H=4、d=64 |\n| `--repeats 50` | 每组重复 50 次，共 5 组，报告每次前向时间的中位数 |\n| `GPU ms` | GPU Event 时间；无 mask、无 dropout，不含反向与数据上传 |\n| `Extra peak MiB` | 输入常驻之后额外的张量 allocated 峰值，不是模型总显存 |\n\n默认后端为 `cudnn`。程序打印设备、PyTorch 和 CUDA 版本，并先显示 `Validation: PASS`。把 `--n` 改为 4096 可观察规模变化。",
+      "answer": "",
+      "section": "反向重算与课堂评测"
+    },
+    {
+      "id": "attention-results",
+      "title": "实验结果：减少中间张量，降低前向成本",
+      "markdown": "## 实验结果：减少中间张量，降低前向成本\n\nRTX 5090 Laptop，PyTorch 2.11.0+cu128；B=1、H=4、d=64，FP16 前向：\n\n| N | 显式 S/P 时间 / 峰值 | cuDNN 融合时间 / 峰值 | 时间比 |\n| ---: | ---: | ---: | ---: |\n| 2048 | 0.213 ms / 65 MiB | 0.075 ms / 1 MiB | 2.85× |\n| 4096 | 1.450 ms / 258 MiB | 0.266 ms / 2 MiB | 5.45× |\n\n**N 翻倍时，显式路径的额外峰值接近四倍；融合路径仍不保存完整 S/P。** 时间同时受缓存、调度与计算影响，不一定按同一比例增长。\n\n这是课堂设备上两个实现的实测，不是 FA1–FA4 的版本排名。时间会随尺寸与设备状态变化；该实验也没有测完整模型训练。",
+      "answer": "",
+      "section": "反向重算与课堂评测"
+    },
+    {
+      "id": "topic-448b07efa5",
+      "title": "基准测试：不要让比较对象悄悄改变",
+      "markdown": "## 基准测试：不要让比较对象悄悄改变\n\n\n报告 $B,H_q,H_{kv},L_q,L_k,d,d_v$、dtype、causal/dropout、前向或前反向、设备与库版本。\n\n计时需 warm-up、正确等待并使用设备计时；显存报告区分已分配张量、临时峰值和分配器保留空间。\n\n若强制的 Flash 后端不支持输入，应记录失败与原因，不能静默换成另一个后端后继续标作 FlashAttention。",
+      "answer": "",
+      "section": "反向重算与课堂评测"
+    },
+    {
+      "id": "topic-419a70c10d",
+      "title": "原论文读图：FA4 的性能优势取决于比较条件",
+      "markdown": "## 原论文读图：FA4 的性能优势取决于比较条件\n\n前面的课堂实验比较融合与显式 S/P；这张论文图则在 **B200、BF16、head dimension 128** 上比较多种 Attention 实现。\n\n```paper-figure\nfa4-forward\n```\n\n- **读坐标：** Sequence Length 是序列长度（1K=1024）；Forward TFLOPS 是前向有效吞吐，越高越好。左侧 causal=False 可看全部 Key，右侧 causal=True 屏蔽未来位置。\n- **读图例：** 颜色区分 FA2、FA4、cuDNN、Triton、Gluon 实现；名称后的数字是软件版本。先固定同一个长度，再比较各色柱子，例如非因果 32K 下新版 cuDNN 与 FA4 都约为 1613 TFLOP/s。\n- **读条件：** 总 token 数 B×N 固定为 32K，所以 N 变长时 batch 变小；这不是固定 batch 的曲线，也不是整模型训练速度。\n\n图中优势随形状和对手实现变化，不能概括为对所有库都有固定倍数的加速。",
+      "answer": "",
+      "section": "反向重算与课堂评测"
+    },
+    {
+      "id": "fa-summary",
+      "title": "本讲小结：每一代在解决什么",
+      "markdown": "## 本讲小结：每一代在解决什么\n\n| 版本 | 主要问题 | 设计重点 |\n| --- | --- | --- |\n| FA1 | N² 中间矩阵反复进出显存 | 分块融合、在线 Softmax、反向重算 |\n| FA2 | 工作分配与块内协作限制吞吐 | 增加 Query 并行，调整 warp 分工 |\n| FA3 | 搬运、矩阵乘和 Softmax 相互等待 | Hopper 异步路径与重叠 |\n| FA4 | 矩阵吞吐增长快于其他资源 | Blackwell 流水安排与非矩阵开销优化 |\n\n算法的数学目标相同，**状态放在哪里、工作交给谁、哪些操作能够重叠**在持续变化。\n\n下一讲转向不规则计算：经典 3DGS、HiGS 单卡渲染与 Grendel-GS 多卡训练。",
+      "answer": "",
+      "section": "反向重算与课堂评测"
+    },
+    {
+      "id": "topic-e8c931266a",
+      "title": "掩码行的边界行为，要写进参考实现",
+      "markdown": "## 掩码行的边界行为，要写进参考实现\n\n\n被屏蔽的 Key 权重为 0，不能参与 max 的有效集合。\n\n若一个 tile 全被屏蔽，状态保持不变；若整行全被屏蔽，本课 CPU 模型约定 $O=0$、指数和的对数（LSE，Log-Sum-Exp）为 $-\\infty$。这是明确的接口选择，调用外部内核时应核实其契约。\n\n课堂扩展参考程序 `attention_reference.py`：覆盖不整除分块、空首块、全屏蔽行与 Q/K/V 梯度校验。",
+      "answer": "",
+      "section": "边界、反向与推理扩展",
+      "depth": "reference"
+    },
+    {
+      "id": "topic-6ad6c5ba28",
+      "title": "非方阵 causal：一个参数名藏着两种对齐",
+      "markdown": "## 非方阵 causal：一个参数名藏着两种对齐\n\n\n```attention-mask-lab\n```\n\n训练中的方阵掩码很直观；带历史 KV 的增量推理需要显式确认 Query 的逻辑位置。",
+      "answer": "",
+      "section": "边界、反向与推理扩展",
+      "depth": "reference"
+    },
+    {
+      "id": "topic-f908b96340",
+      "title": "因果 tile 有三种，不必每块都逐元素判断",
+      "markdown": "## 因果 tile 有三种，不必每块都逐元素判断\n\n\n把 score tile 相对于因果边界分类：\n\n- 完全在允许区：不需要逐元素 causal 判断。\n- 横跨边界：只保留满足逻辑位置关系的元素。\n- 完全在未来区：整个 K/V tile 跳过。\n\n于是各 Query tile 的工作量可能不同。 **mask 同时影响结果、工作量和调度。** 非方阵或带位置偏移时，应从绝对位置重新推导边界。",
+      "answer": "",
+      "section": "边界、反向与推理扩展",
+      "depth": "reference"
+    },
+    {
+      "id": "topic-4c17d85725",
+      "title": "GQA：共享 KV，不共享输出分母",
+      "markdown": "## GQA：共享 KV，不共享输出分母\n\n\n设 Query head 数 $H_q=8$，KV head 数 $H_{kv}=2$，分组比为 4。一个常见分组映射是：\n\n$$\nh_{kv}=\\left\\lfloor h_q/4\\right\\rfloor\n$$\n\n每四个 Query head 使用同一组 K/V，可减少 KV 容量并创造复用机会。但每个 Query head 的分数、Softmax 分母和输出仍独立。\n\n逻辑共享能否减少物理搬运，还取决于布局、CTA 分组和缓存行为。",
+      "answer": "",
+      "section": "边界、反向与推理扩展",
+      "depth": "reference"
+    },
+    {
+      "id": "topic-eb70a06ce0",
+      "title": "块内重叠，仍然需要保留正确的那一代数据",
+      "markdown": "## 块内重叠，仍然需要保留正确的那一代数据\n\n\n一个 warpgroup 也可以把后续块的 QK 与当前块的部分 Softmax/PV 流程交错。\n\n读到的新分数属于第 $j+1$ 个 K 块；正在使用的权重可能仍属于第 $j$ 块。它们不能共享一个已被覆盖的寄存器或缓冲槽。\n\n**更多并行状态 → 更长的数据存活期 → 更高的寄存器压力。**",
+      "answer": "",
+      "section": "边界、反向与推理扩展",
+      "depth": "reference"
+    },
+    {
+      "id": "topic-54057c26be",
+      "title": "head dimension 改变，也会改变相对瓶颈",
+      "markdown": "## head dimension 改变，也会改变相对瓶颈\n\n\n沿用前面 B200 的局部块模型：M / N 分别为 Query / K/V 块的行数，d 为 head 维度。在该模型中：\n\n$$\n\\frac{T_{\\exp}}{T_{\\rm MMA}}\n=\\frac{MN/16}{4MNd/8192}=\\frac{128}{d}\n$$\n\n$d=64$ 时，指数理想服务时间是两次 MMA 的两倍；$d=256$ 时，这个比值变为一半。\n\n这是相对资源需求的估算。具体 MMA 形状、padding、shared 读取、寄存器和时钟还会改变实际结果。",
+      "answer": "",
+      "section": "边界、反向与推理扩展",
+      "depth": "reference"
+    },
+    {
+      "id": "topic-7ce6f522c7",
+      "title": "Softmax 反向：一个逐行标量把公式缩短",
+      "markdown": "## Softmax 反向：一个逐行标量把公式缩短\n\n\n设上游梯度为 $dO$，先有 $dP=dOV^\\top$。逐行 Softmax 的导数为：\n\n$$\ndS_{ij}=P_{ij}\\left(dP_{ij}-D_i\\right),\\quad\nD_i=\\sum_jP_{ij}dP_{ij}\n$$\n\n代入 $O_i=\\sum_jP_{ij}V_j$，可得：\n\n$$\nD_i=\\sum_c O_{ic}dO_{ic}\n$$\n\n所以 D 能直接由已有 O、dO 逐行计算，无需物化完整 dP。",
+      "answer": "",
+      "section": "边界、反向与推理扩展",
+      "depth": "reference"
+    },
+    {
+      "id": "topic-7382dbc4a2",
+      "title": "反向的矩阵乘与梯度所有权",
+      "markdown": "## 反向的矩阵乘与梯度所有权\n\n\n$S=QK^\\top/\\sqrt d$，因此：\n\n$$\ndQ=dSK/\\sqrt d,\\qquad dK=dS^\\top Q/\\sqrt d\n$$\n\n$$\ndV=P^\\top dO\n$$\n\n不同 Query tile 会贡献到相同 dK/dV；按 Key tile 分工时，反而会对 dQ 产生多份贡献。选择哪个方向切，决定哪一侧需要归约。\n\n[![Attention 反向的重计算、矩阵乘与逐行修正](/materials/lectures/13/figures/attention-backward.svg)](/materials/lectures/13/figures/attention-backward.svg)\n\n*课程原创绘图；点击图片可查看原图。*",
+      "answer": "",
+      "section": "边界、反向与推理扩展",
+      "depth": "reference"
+    },
+    {
+      "id": "topic-81057b26d9",
+      "title": "Prefill 与 Decode：同一个公式，不同的工作形状",
+      "markdown": "## Prefill 与 Decode：同一个公式，不同的工作形状\n\n\nPrefill 常有较大的 $L_q$，有很多 Query 行可并行；单步 Decode 常见 $L_q=1$，KV 长度却可能很大。\n\n这时两次矩阵运算形状更窄，读取 KV、调度并行度与缓存布局会更突出。GQA 可以降低 KV 容量，但实际复用仍需实现配合。\n\n**为长序列训练优化的最佳 kernel，不自动成为所有推理形状的最佳选择。**",
+      "answer": "",
+      "section": "边界、反向与推理扩展",
+      "depth": "reference"
+    },
+    {
+      "id": "topic-c940154bc0",
+      "title": "Split-KV：拿一次归约换更多并行工作",
+      "markdown": "## Split-KV：拿一次归约换更多并行工作\n\n\nQuery 很少时，可以把 KV 分成多个区间，各自输出 $(r,\\ell,u)$，再合并为同一行的状态。\n\n两段先统一参考值 $r=\\max(r_1,r_2)$，令 $a_i=e^{r_i-r}$，再计算：\n\n$$\\ell=a_1\\ell_1+a_2\\ell_2,\\qquad u=a_1u_1+a_2u_2,\\qquad O=u/\\ell.$$\n\n这与在线 Softmax 相同：先把两段换到同一数值尺度，再相加。\n\n收益是更多独立工作；成本包括状态工作区、额外启动/同步、合并计算与不同舍入顺序。区间太细时，这些成本会占主导。",
+      "answer": "",
+      "section": "边界、反向与推理扩展",
+      "depth": "reference"
+    }
+  ]
+}

@@ -52,7 +52,14 @@ export const lessons = [
       '模型家族',
       '混合专家',
     ],
-    topicAnchors: ['topic-1', 'topic-29', 'topic-38', 'topic-55', 'topic-85', 'topic-115'],
+    topicAnchors: [
+      'topic-1',
+      'topic-29',
+      'topic-38',
+      'topic-55',
+      'topic-85',
+      'topic-115',
+    ],
     pages: 184,
     hidden: 0,
     summary:
@@ -131,6 +138,28 @@ export const parallelCourse = {
           slug: 'parallel-06-memory-hierarchy',
           sourcePath: '06-memory-hierarchy',
           href: '/lectures/parallel-06-memory-hierarchy',
+        },
+      ],
+    },
+    {
+      number: '03',
+      title: 'GPU 与 AI 实践',
+      summary:
+        '从 FlashAttention 到 3D Gaussian Splatting，理解单卡与多卡的并行优化。',
+      lectures: [
+        {
+          number: '05',
+          title: 'FlashAttention',
+          slug: 'parallel-10-flash-attention',
+          sourcePath: '10-flash-attention',
+          href: '/lectures/parallel-10-flash-attention',
+        },
+        {
+          number: '06',
+          title: '3D Gaussian Splatting',
+          slug: 'parallel-11-gaussian-splatting',
+          sourcePath: '11-gaussian-splatting',
+          href: '/lectures/parallel-11-gaussian-splatting',
         },
       ],
     },

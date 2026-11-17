@@ -1,4 +1,4 @@
-import { cpSync, existsSync, readdirSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const repo = resolve(import.meta.dirname, '..', '..');
@@ -20,6 +20,9 @@ for (const entry of readdirSync(build, { withFileTypes: true })) {
   if (['.vite', '.assetsignore', '_headers'].includes(entry.name)) continue;
   cpSync(join(build, entry.name), join(repo, entry.name), { recursive: true });
 }
+const parallel = JSON.parse(
+  readFileSync(join(build, 'parallel-computing/course-manifest.json'), 'utf8'),
+);
 console.log(
-  'Published local static files: 6 model lectures and 4 parallel lectures.',
+  `Published local static files: 6 model lectures and ${parallel.lectures.length} parallel lectures.`,
 );

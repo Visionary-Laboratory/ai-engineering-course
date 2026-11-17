@@ -1,0 +1,13 @@
+/* Each slide grows with its content instead of reserving a full viewport. */
+html .lecture-workspace[data-lecture] .slide-stage,
+html .lecture-workspace[data-lecture].is-focused .slide-stage {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+html .lecture-workspace .slide-content {
+  flex: none;
+  overflow: visible;
+}

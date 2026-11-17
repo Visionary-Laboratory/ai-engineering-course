@@ -13,7 +13,7 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "check": "tsc --noEmit",
-    "test": "node scripts/check-content.mjs && node scripts/check-formulas.mjs && node scripts/check-diagrams.mjs",
+    "test": "node scripts/check-content.mjs && node scripts/check-formulas.mjs && node scripts/check-diagrams.mjs && node scripts/check-parallel-content.mjs",
     "diagrams": "node scripts/redraw-diagrams.mjs",
     "sync:generative": "node scripts/sync-generative-courseware.mjs"
   },

@@ -23,7 +23,19 @@
       "slug": "06-memory-hierarchy",
       "title": "CUDA编程入门（下）",
       "slides": 79
+    },
+    {
+      "number": 5,
+      "slug": "10-flash-attention",
+      "title": "FlashAttention",
+      "slides": 62
+    },
+    {
+      "number": 6,
+      "slug": "11-gaussian-splatting",
+      "title": "3D Gaussian Splatting",
+      "slides": 68
     }
   ],
-  "glossaryTerms": 59
+  "glossaryTerms": 76
 }
